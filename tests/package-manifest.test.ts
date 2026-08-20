@@ -66,7 +66,7 @@ describe("assertPackageIdMatchesManifest — the pure guard", () => {
 
     it("throws when the configured package id is blank", () => {
         expect(() => assertPackageIdMatchesManifest("", "sohl")).toThrow(
-            /FOUNDRY_PACKAGE_ID/,
+            /`foundryPackage` is empty/,
         );
     });
 });
@@ -131,8 +131,9 @@ describe("assertPackageIdMatchesManifestFile — the thin caller", () => {
         ).not.toThrow();
     });
 
-    // The companion case — "a *consuming* repository's own manifest agrees with
-    // FOUNDRY_PACKAGE_ID", the regression #1503 exists for — is not here. It
+    // The companion case — "a *consuming* repository's own manifest agrees
+    // with the configured `foundryPackage`", the regression #1503 exists for —
+    // is not here. It
     // asserts about a repository that ships a Foundry package, which this one
     // does not, so it lives with each consumer: see `tests/build/` in
     // Song-of-Heroic-Lands-FoundryVTT. What stays here is the guard itself,

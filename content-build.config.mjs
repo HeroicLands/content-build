@@ -5,16 +5,18 @@
  * installed copy under `node_modules/@heroiclands/content-build/` never shadows
  * a consuming repository's config.
  *
- * WHY THIS FILE EXISTS AT ALL: several engine modules resolve the configuration
- * at *module scope* (`ITEM_TYPES`, `CONTENT_PACKAGE`, `FOUNDRY_PACKAGE_ID`,
- * `DOC_ENTRY_TYPES`, `DEFAULT_TEMPLATE_DIR`), so importing them throws when no
- * config is found by walking up from the module's directory. While this package
- * lived inside the Song of Heroic Lands repository that walk always found that
- * repository's root config, which is why the suite appeared self-contained and
- * was not. Extracting the package exposed it.
+ * WHY THIS FILE EXISTS: the suite has cases *about configured behaviour* — that
+ * a path resolves where configuration says, that `_stats` is stamped from it,
+ * that a pack routes by it — and those need a configuration to describe. It is
+ * no longer needed merely to *import* a module: resolution is lazy as of #2, and
+ * `tests/import-needs-no-config.test.ts` proves it by working from a copy of the
+ * shipped files placed where this file cannot be found.
  *
- * That eager resolution is the defect behind #1559. When it is made lazy, this
- * file should shrink to whatever the tests genuinely need, or disappear.
+ * It used to exist for the other reason. Five engine modules resolved the
+ * configuration at *module scope*, so importing them threw when the upward walk
+ * found nothing — invisible while the package was vendored inside the Song of
+ * Heroic Lands repository, whose root config the walk always found. Extracting
+ * the package exposed it, and this file stood in until #2 fixed it.
  *
  * The values below are deliberately generic placeholders. Nothing here should
  * be read as the shape a real consumer must adopt — see the README for that.

@@ -113,7 +113,7 @@ const norm = (s) => String(s).toLowerCase().trim();
  * arrangement for a macro (#1514).
  *
  * The virtual form exists for a type that carries separate documentation
- * ({@link sohl.utils.packs.DOC_ENTRY_TYPES} — the set the journals compiler and
+ * ({@link sohl.utils.packs.docEntryTypes} — the set the journals compiler and
  * the link manifest read too), **or** for one that routes to the items pack.
  * The second clause is the older rule and stays: types that compile into items
  * are the open, unenumerated set (#1276), and a foreign package may publish an

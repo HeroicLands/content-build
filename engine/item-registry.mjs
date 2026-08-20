@@ -34,7 +34,7 @@
  * @module
  */
 
-import { packConfig } from "./pack-config.mjs";
+import { loadPackConfig } from "./pack-config.mjs";
 
 /**
  * Every content type that compiles into an item — and therefore into an item
@@ -48,9 +48,14 @@ import { packConfig } from "./pack-config.mjs";
  * behind it, so every `type: trait` note passed the gate and then failed to
  * compile (#1504).
  *
- * @type {ReadonlySet<string>}
+ * An accessor rather than a hoisted constant, so that importing this module
+ * needs no configuration (#2).
+ *
+ * @returns {ReadonlySet<string>} The configured item types.
  */
-export const ITEM_TYPES = packConfig.itemTypes;
+export function itemTypes() {
+    return loadPackConfig().itemTypes;
+}
 
 /**
  * The builder the consuming repository registered for an item type.
@@ -65,7 +70,7 @@ export const ITEM_TYPES = packConfig.itemTypes;
  */
 export function itemBuilder(type) {
     const builder = /** @type {Record<string, Function>} */ (
-        packConfig.itemBuilders
+        loadPackConfig().itemBuilders
     )[type];
     if (typeof builder !== "function") {
         throw new Error(

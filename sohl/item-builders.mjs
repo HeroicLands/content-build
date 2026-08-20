@@ -16,7 +16,7 @@
  * Item, keyed to the builder that produces its `system` block.
  *
  * There is one list, not two. This repository hands {@link ITEM_BUILDERS} to
- * the build as `itemBuilders` in `content-build.config.mjs`, and `ITEM_TYPES`
+ * the build as `itemBuilders` in `content-build.config.mjs`, and `itemTypes()`
  * — the whitelist — is derived from that table's own keys, so a type cannot be
  * whitelisted for compilation without a builder to compile it. Previously the
  * whitelist and the builder table were maintained by hand and had already

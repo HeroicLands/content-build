@@ -49,7 +49,7 @@ import {
 } from "./helpers.mjs";
 import { countContentNotes } from "./content-tree.mjs";
 import { assertPackageIdMatchesManifestFile } from "./package-manifest.mjs";
-import { packConfig } from "./pack-config.mjs";
+import { loadPackConfig } from "./pack-config.mjs";
 import { routerFor } from "./pack-router.mjs";
 
 /**
@@ -77,7 +77,7 @@ const COMPILERS = {
  *   repository's.
  * @returns {string} The pack's JSON directory.
  */
-export const packJsonDir = (name, config = packConfig) =>
+export const packJsonDir = (name, config = loadPackConfig()) =>
     path.join(config.paths.packJson, name);
 
 /**
@@ -97,7 +97,7 @@ export const packJsonDir = (name, config = packConfig) =>
  *   repository ships no items at all — the actors pass, which is the only
  *   caller that needs one, refuses that itself.
  */
-export function itemPackJsonDirs(config = packConfig) {
+export function itemPackJsonDirs(config = loadPackConfig()) {
     return config.packs
         .filter((pack) => pack.type === "Item")
         .map((pack) => packJsonDir(pack.name, config));
@@ -226,9 +226,12 @@ export function emptyPassErrors(passes) {
  * @throws {Error} If the configured Foundry package id has drifted from the
  *   shipped manifest's `id` (see `package-manifest.mjs`).
  */
-export async function generatePacksJson({ only, config = packConfig } = {}) {
+export async function generatePacksJson({
+    only,
+    config = loadPackConfig(),
+} = {}) {
     // Before anything is generated: every UUID written below is addressed to
-    // FOUNDRY_PACKAGE_ID, so a value that has drifted from the shipped
+    // the configured `foundryPackage`, so a value that has drifted from the shipped
     // manifest's `id` produces a whole pack of links that resolve nowhere.
     // Throws rather than counting an error — there is nothing worth compiling.
     //

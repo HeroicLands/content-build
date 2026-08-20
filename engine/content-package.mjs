@@ -22,7 +22,7 @@
  * spelling for them.
  */
 
-import { packConfig } from "./pack-config.mjs";
+import { loadPackConfig } from "./pack-config.mjs";
 
 /**
  * The **content** package: the distribution unit a note declares in its
@@ -31,15 +31,22 @@ import { packConfig } from "./pack-config.mjs";
  * Stable across compilation targets. If this content were ever compiled for a
  * second game system, its notes would still declare `package: sohl` — only the
  * Foundry package below would differ.
+ *
+ * An accessor rather than a hoisted constant, so that importing this module
+ * needs no configuration (#2).
+ *
+ * @returns {string} The configured `contentPackage`.
  */
-export const CONTENT_PACKAGE = packConfig.contentPackage;
+export function contentPackage() {
+    return loadPackConfig().contentPackage;
+}
 
 /**
  * The **Foundry package** this repository's packs are shipped in — the `id` in
  * `assets/templates/system.template.json`, and the first segment of every
  * compendium UUID the compilers emit.
  *
- * Distinct from {@link CONTENT_PACKAGE}, and equal to it only by coincidence
+ * Distinct from {@link contentPackage}, and equal to it only by coincidence
  * here: a note says `package: sohl` and its documents are addressed as
  * `Compendium.sohl.<pack>.<Type>.<id>`. In `sohl-thalorna` the two differ
  * (`thalorna` vs `sohl-thalorna`), which is why they are separate values rather
@@ -49,5 +56,12 @@ export const CONTENT_PACKAGE = packConfig.contentPackage;
  * filesystem-free and unit-testable. `assertPackageIdMatchesManifestFile` in
  * `package-manifest.mjs` — called from `generatePacksJson`, before any entry is
  * written — fails the build if this value and the manifest's `id` ever drift.
+ *
+ * An accessor rather than a hoisted constant, so that importing this module
+ * needs no configuration (#2).
+ *
+ * @returns {string} The configured `foundryPackage`.
  */
-export const FOUNDRY_PACKAGE_ID = packConfig.foundryPackage;
+export function foundryPackageId() {
+    return loadPackConfig().foundryPackage;
+}

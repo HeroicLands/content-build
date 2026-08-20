@@ -112,12 +112,12 @@ function underConfig(configPath: string, body: string): any {
 /** The compiler, constructed against the consumer's own content tree. */
 const PREAMBLE = `
     const { Items } = await import(${JSON.stringify(ITEMS_URL)});
-    const { packConfig } = await import(${JSON.stringify(
+    const { loadPackConfig } = await import(${JSON.stringify(
         pathToFileURL(path.join(PACKAGE_ROOT, "engine/pack-config.mjs")).href,
     )});
     const items = new Items({
-        contentBase: packConfig.paths.content,
-        dest: packConfig.paths.packJson,
+        contentBase: loadPackConfig().paths.content,
+        dest: loadPackConfig().paths.packJson,
     });
 `;
 
@@ -156,7 +156,7 @@ describe("a consumer's own itemBuilders table is the one that compiles (#1563)",
             process.stdout.write(JSON.stringify({
                 relic: items.selects({ type: "relic" }),
                 skill: items.selects({ type: "skill" }),
-                types: [...packConfig.itemTypes],
+                types: [...loadPackConfig().itemTypes],
             }));`,
         );
 

@@ -24,7 +24,7 @@ import log from "loglevel";
 import { defineConfig } from "../config.mjs";
 import { createPackRouter } from "../engine/pack-router.mjs";
 import { generatePacksJson } from "../engine/generate.mjs";
-import { CONTENT_PACKAGE } from "../engine/content-package.mjs";
+import { contentPackage } from "../engine/content-package.mjs";
 
 /* ---------------------------------------------------------------------- */
 /*  The router, on its own                                                 */
@@ -134,7 +134,7 @@ describe("createPackRouter — which pack a note's document lands in", () => {
 function baseConfig({ packs, rootDir = os.tmpdir() }: any) {
     return defineConfig({
         rootDir,
-        contentPackage: CONTENT_PACKAGE,
+        contentPackage: contentPackage(),
         foundryPackage: "sohl",
         packageKind: "systems",
         stats: {
@@ -216,7 +216,7 @@ name:
 id: ${id}
 shortcode: ${shortcode}
 type: skill
-package: ${CONTENT_PACKAGE}
+package: ${contentPackage()}
 ${head}
 sohl:
   archetype: null
