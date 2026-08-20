@@ -48,14 +48,12 @@ import {
     makeId,
     resolveName,
     resolveImg,
-    buildStats,
+    defaultStats,
     withArchetypeFlag,
     md,
 } from "../engine/helpers.mjs";
 import { BasePackCompiler } from "../engine/base-compiler.mjs";
-import { CONTENT_PACKAGE } from "../engine/content-package.mjs";
-
-const STATS = buildStats();
+import { contentPackage } from "../engine/content-package.mjs";
 
 const ACTOR_VAULT_TYPES = new Set(["character", "creature"]);
 
@@ -321,7 +319,7 @@ export class Actors extends BasePackCompiler {
     reportDetail(stats) {
         log.debug(
             `Skipped ${stats.skippedOther} non-actor file(s) ` +
-                `(not character/creature, package:${CONTENT_PACKAGE})`,
+                `(not character/creature, package:${contentPackage()})`,
         );
     }
 
@@ -511,7 +509,7 @@ export class Actors extends BasePackCompiler {
             // `sohl.archetype` (required nullable number) drives
             // `flags.sohl.docArchetype` (#640 / archetype contract #604).
             flags: withArchetypeFlag(fm, fm.flags, ctx),
-            _stats: STATS,
+            _stats: defaultStats(),
             _key: `!actors!${id}`,
         };
     }

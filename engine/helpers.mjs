@@ -33,9 +33,9 @@ import unidecode from "unidecode";
 import markdownit from "markdown-it";
 import log from "loglevel";
 
-import { packConfig } from "./pack-config.mjs";
+import { loadPackConfig } from "./pack-config.mjs";
 import { packRouter } from "./pack-router.mjs";
-import { CONTENT_PACKAGE, FOUNDRY_PACKAGE_ID } from "./content-package.mjs";
+import { contentPackage, foundryPackageId } from "./content-package.mjs";
 import { readPackageManifest } from "./package-manifest.mjs";
 import { loadForeignManifests, PACKAGE_BASE } from "./kb-manifest.mjs";
 import { buildWikilinkIndex, convertWikilinks } from "./wikilinks.mjs";
@@ -98,7 +98,7 @@ export function parseMarkdownFile(filePath) {
  */
 export function* walkMarkdownTree(
     rootDir,
-    { skipDirectories = packConfig.skipDirectories } = {},
+    { skipDirectories = loadPackConfig().skipDirectories } = {},
 ) {
     if (!fs.existsSync(rootDir)) return;
     const stack = [rootDir];
@@ -231,7 +231,7 @@ export function slugify(name) {
  *   Defaults to this repository's.
  * @returns {string} the Foundry-relative path, or `""` when `raw` is empty.
  */
-export function resolveImg(raw, config = packConfig) {
+export function resolveImg(raw, config = loadPackConfig()) {
     if (!raw) return "";
     const s = String(raw);
     if (s.startsWith("icons/") || s.startsWith("images/")) {
@@ -286,7 +286,7 @@ const cachedCoreVersion = new Map();
  *   a silent fallback is how the original defect shipped.
  */
 export function supportedCoreVersion(
-    templateDir = packConfig.paths.packageManifest,
+    templateDir = loadPackConfig().paths.packageManifest,
 ) {
     const cached = cachedCoreVersion.get(templateDir);
     if (cached) return cached;
@@ -319,7 +319,10 @@ export function supportedCoreVersion(
  *   The resolved build configuration. Defaults to this repository's.
  * @returns {object} The `_stats` block.
  */
-export function buildStats(systemVersion = undefined, config = packConfig) {
+export function buildStats(
+    systemVersion = undefined,
+    config = loadPackConfig(),
+) {
     return {
         systemId: config.stats.systemId,
         systemVersion: systemVersion ?? config.stats.systemVersion,
@@ -328,6 +331,25 @@ export function buildStats(systemVersion = undefined, config = packConfig) {
         modifiedTime: 0,
         lastModifiedBy: config.stats.lastModifiedBy,
     };
+}
+
+/** Memoised {@link defaultStats}. */
+let cachedDefaultStats;
+
+/**
+ * The `_stats` block every compiler stamps on an entry it emits, built once.
+ *
+ * Each compiler used to hoist `const STATS = buildStats()` at module scope,
+ * which read the shipped package manifest the moment the module was imported —
+ * so importing a compiler required a manifest to exist even when nothing was
+ * going to be compiled (#2). Deferred to first use and memoised here, the
+ * cost and the identity are what they always were; only the moment moved.
+ *
+ * @returns {object} The default `_stats` block, shared by every compiler.
+ */
+export function defaultStats() {
+    cachedDefaultStats ??= buildStats();
+    return cachedDefaultStats;
 }
 
 /**
@@ -366,7 +388,7 @@ import { packForType } from "./ids.mjs";
  *   this repository's own.
  * @returns {{byShortcode: Map, byAlias: Map}} From `buildWikilinkIndex`.
  */
-export function buildContentLinkIndex(contentBase, router = packRouter) {
+export function buildContentLinkIndex(contentBase, router = packRouter()) {
     const docs = [];
     for (const { frontmatter: fm, absPath } of walkMarkdownTree(contentBase)) {
         if (!fm?.id) continue;
@@ -394,8 +416,8 @@ export function buildContentLinkIndex(contentBase, router = packRouter) {
     // Packages this repository links into but does not publish; their vendored
     // manifests live at the configured location (#1446, #1499).
     const { index: foreign, stale } = loadForeignManifests(
-        packConfig.paths.manifests,
-        [CONTENT_PACKAGE],
+        loadPackConfig().paths.manifests,
+        [contentPackage()],
         PACKAGE_BASE,
     );
     if (stale.length) {
@@ -415,9 +437,9 @@ export function buildContentLinkIndex(contentBase, router = packRouter) {
     );
     return buildWikilinkIndex(
         docs,
-        FOUNDRY_PACKAGE_ID,
+        foundryPackageId(),
         foreign,
-        CONTENT_PACKAGE,
+        contentPackage(),
     );
 }
 

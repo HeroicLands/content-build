@@ -36,15 +36,15 @@
  * compiles into a Macro, and its prose into a JournalEntry addressed
  * `docmacro/<shortcode>` (#1514). So is a **map note**, which compiles into a
  * Scene and whose prose becomes the place description its map pins point at
- * (#1525). {@link DOC_ENTRY_TYPES} is the one set both the compilers and the
+ * (#1525). {@link docEntryTypes} is the one set both the compilers and the
  * link manifest read to know which types work this way.
  *
  * Plain ESM with no Foundry and no filesystem access, so it is unit-testable.
  */
 
 import { compendiumUuid, makeId, pageUuid } from "./ids.mjs";
-import { packConfig } from "./pack-config.mjs";
-import { ITEM_TYPES } from "./item-registry.mjs";
+import { loadPackConfig } from "./pack-config.mjs";
+import { itemTypes } from "./item-registry.mjs";
 import { packRouter } from "./pack-router.mjs";
 
 /**
@@ -58,7 +58,7 @@ import { packRouter } from "./pack-router.mjs";
  * through — one object, so the whitelist and the table cannot disagree
  * (#1504/#1563).
  */
-export { ITEM_TYPES };
+export { itemTypes };
 
 /**
  * Every content type whose **prose compiles into a JournalEntry of its own**,
@@ -79,9 +79,14 @@ export { ITEM_TYPES };
  * `doc` notes and actors are absent: each is a single document, so it has no
  * separate documentation to address.
  *
- * @type {ReadonlySet<string>}
+ * An accessor rather than a hoisted constant, so that importing this module
+ * needs no configuration (#2).
+ *
+ * @returns {ReadonlySet<string>} The configured doc-carrying types.
  */
-export const DOC_ENTRY_TYPES = packConfig.docEntryTypes;
+export function docEntryTypes() {
+    return loadPackConfig().docEntryTypes;
+}
 
 /**
  * Whether a content note's type is one whose prose becomes a JournalEntry of
@@ -92,7 +97,7 @@ export const DOC_ENTRY_TYPES = packConfig.docEntryTypes;
  *   false for `doc` and for actors.
  */
 export function hasDocEntry(type) {
-    return DOC_ENTRY_TYPES.has(String(type));
+    return docEntryTypes().has(String(type));
 }
 
 /**
@@ -142,7 +147,7 @@ export function itemDocPointer(packageId, itemId, name, firstPageId) {
         packageId,
         "doc",
         itemDocEntryId(itemId),
-        packRouter.defaultOf("JournalEntry"),
+        packRouter().defaultOf("JournalEntry"),
     );
     return `@UUID[${pageUuid(entryUuid, firstPageId)}]{${name}}`;
 }

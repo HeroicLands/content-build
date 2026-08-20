@@ -18,7 +18,7 @@ import {
     hasDocEntry,
     itemDocEntryId,
     itemDocPointer,
-    ITEM_TYPES,
+    itemTypes,
 } from "../engine/item-docs.mjs";
 import { splitPages, buildPages, journalPageId } from "../engine/journals.mjs";
 
@@ -101,7 +101,7 @@ describe("splitPages lead-page naming", () => {
 
 describe("hasDocEntry (whose prose becomes a JournalEntry of its own)", () => {
     it("accepts every item type", () => {
-        for (const type of ITEM_TYPES) expect(hasDocEntry(type)).toBe(true);
+        for (const type of itemTypes()) expect(hasDocEntry(type)).toBe(true);
     });
 
     it("accepts a macro — its body documents the script it also compiles", () => {

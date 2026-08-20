@@ -19,7 +19,7 @@
  * list of constants, so the
  * item-type registry (`item-builders.mjs`) can build on it without dragging in
  * `helpers.mjs`, which reaches wikilinks — and through them back to
- * `item-docs.mjs`, the very module that derives `ITEM_TYPES` from the registry
+ * `item-docs.mjs`, the very module that derives `itemTypes()` from the registry
  * (#1504). Keeping these readers dependency-free is what makes that one-way.
  *
  * `helpers.mjs` re-exports everything here, so existing importers are

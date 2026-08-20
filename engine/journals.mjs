@@ -17,7 +17,7 @@
  *
  * The content root (`contentBase`) is walked recursively; any `.md` file
  * whose frontmatter declares `package: sohl` and either `type: doc` or a
- * **doc-carrying type** ({@link sohl.utils.packs.DOC_ENTRY_TYPES} — every item
+ * **doc-carrying type** ({@link sohl.utils.packs.docEntryTypes} — every item
  * type, plus `macro`) is compiled into one JournalEntry document. Each note's
  * body is split on top-level H1 headings; the optional content before the
  * first H1 becomes a lead page, and each subsequent H1 starts a new page named
@@ -46,13 +46,17 @@
 
 import log from "loglevel";
 
-import { sohlField, makeId, resolveName, buildStats, md } from "./helpers.mjs";
+import {
+    sohlField,
+    makeId,
+    resolveName,
+    defaultStats,
+    md,
+} from "./helpers.mjs";
 import { BasePackCompiler } from "./base-compiler.mjs";
-import { CONTENT_PACKAGE } from "./content-package.mjs";
+import { contentPackage } from "./content-package.mjs";
 import { anchorPageId } from "./wikilinks.mjs";
 import { hasDocEntry, itemDocEntryId } from "./item-docs.mjs";
-
-const STATS = buildStats();
 
 /**
  * Splits a markdown body into pages by top-level H1 headings. Fenced
@@ -248,7 +252,7 @@ export function buildJournalEntry({
         ownership: { default: 0 },
         flags: flags || {},
         _id: id,
-        _stats: STATS,
+        _stats: defaultStats(),
         _key: `!journal!${id}`,
     };
 }
@@ -278,7 +282,7 @@ export class Journals extends BasePackCompiler {
      * (#1348); a macro's is the same arrangement (#1514), and so is a map's,
      * whose prose is the place description its pins point at (#1525).
      *
-     * The membership is {@link sohl.utils.packs.DOC_ENTRY_TYPES}, read through
+     * The membership is {@link sohl.utils.packs.docEntryTypes}, read through
      * {@link sohl.utils.packs.hasDocEntry} — the one set the link manifest also
      * reads, so what compiles and what is published cannot drift apart.
      *
@@ -364,7 +368,7 @@ export class Journals extends BasePackCompiler {
     reportDetail(stats) {
         log.debug(
             `Skipped ${stats.skippedOther} non-doc file(s) ` +
-                `(not type:doc package:${CONTENT_PACKAGE})`,
+                `(not type:doc package:${contentPackage()})`,
         );
     }
 }

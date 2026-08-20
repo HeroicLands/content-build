@@ -22,7 +22,7 @@ import {
     regionDocId,
     wallRestrictions,
 } from "../engine/map-notes.mjs";
-import { DOC_ENTRY_TYPES, hasDocEntry } from "../engine/item-docs.mjs";
+import { docEntryTypes, hasDocEntry } from "../engine/item-docs.mjs";
 
 const SCENE_ID = "AAAAAAAAAAAAAAAA";
 
@@ -108,7 +108,7 @@ describe("map note types", () => {
         // parallel mechanism of its own.
         for (const type of MAP_TYPES) {
             expect(hasDocEntry(type), type).toBe(true);
-            expect(DOC_ENTRY_TYPES.has(type), type).toBe(true);
+            expect(docEntryTypes().has(type), type).toBe(true);
         }
     });
 });

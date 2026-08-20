@@ -18,13 +18,13 @@ import { Journals } from "../engine/journals.mjs";
 import { Actors } from "../sohl/actors.mjs";
 import { Macros } from "../engine/macros.mjs";
 import { Scenes } from "../engine/scenes.mjs";
-import { CONTENT_PACKAGE } from "../engine/content-package.mjs";
+import { contentPackage } from "../engine/content-package.mjs";
 
 /** A note of this build's own content package, in the tree's shape. */
 function note(
     body: string,
     fm: Record<string, unknown>,
-    pkg: string = CONTENT_PACKAGE,
+    pkg: string = contentPackage(),
 ): string {
     const lines = Object.entries({ package: pkg, ...fm }).map(
         ([k, v]) => `${k}: ${JSON.stringify(v)}`,

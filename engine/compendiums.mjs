@@ -45,7 +45,7 @@ import path from "path";
 import { compilePack, extractPack } from "@foundryvtt/foundryvtt-cli";
 import { generatePacksJson, packJsonDir } from "./generate.mjs";
 import { verifyPackSceneLevels } from "./scene-levels.mjs";
-import { packConfig } from "./pack-config.mjs";
+import { loadPackConfig } from "./pack-config.mjs";
 
 /* ----------------------------------------- */
 /*  Compile Packs                            */
@@ -77,7 +77,7 @@ import { packConfig } from "./pack-config.mjs";
  *     {@link verifyPackSceneLevels}.
  */
 export async function compilePacks({
-    config = packConfig,
+    config = loadPackConfig(),
     sourcePacks = config.packDirectories,
     stageDest = config.paths.stage,
     packName,
@@ -150,7 +150,7 @@ function cleanPackEntry(
     {
         clearSourceId = true,
         ownership = 0,
-        lastModifiedBy = packConfig.stats.lastModifiedBy,
+        lastModifiedBy = loadPackConfig().stats.lastModifiedBy,
     } = {},
 ) {
     if (data.ownership) data.ownership = { default: ownership };
@@ -215,7 +215,7 @@ function cleanString(str) {
  * - `npm run build:clean -- classes Barbarian` - Only clean a single item from the specified compendium.
  */
 export async function cleanPacks({
-    config = packConfig,
+    config = loadPackConfig(),
     packDest = config.paths.unpack,
     packName,
     entryName,
@@ -284,7 +284,7 @@ export async function cleanPacks({
  */
 export async function unpackPacks({
     packs,
-    config = packConfig,
+    config = loadPackConfig(),
     stageDest = config.paths.stage,
     packDest = config.paths.unpack,
     packName,
