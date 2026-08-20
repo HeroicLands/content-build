@@ -13,10 +13,12 @@
 
 /**
  * Actors pack compiler — produces JSON pack files for the "actors" Foundry
- * compendium from markdown character/creature notes in the `assets/content/` tree.
+ * compendium from markdown `being` notes in the `assets/content/` tree.
  *
- * Both content types `character` and `creature` produce a Foundry `being` actor;
- * no other distinction propagates to the output.
+ * One content type, named for the Foundry actor it produces. It was two —
+ * `character` and `creature` — which compiled to the same `being` with no
+ * branch anywhere between them; they were retired in SoHL#1580 and are now
+ * reported by `assertTypeNotRetired` in `engine/ids.mjs`.
  *
  * Each actor's embedded items are resolved by looking up `<type>:<shortcode>`
  * against the generated JSON tree of every Item pack (built in prior items
@@ -55,7 +57,11 @@ import {
 import { BasePackCompiler } from "../engine/base-compiler.mjs";
 import { contentPackage } from "../engine/content-package.mjs";
 
-const ACTOR_VAULT_TYPES = new Set(["character", "creature"]);
+/**
+ * The content type this pass claims. A note's `type` names the Foundry document
+ * it compiles into, exactly as every other content type does.
+ */
+const ACTOR_VAULT_TYPE = "being";
 
 // Default art per actor type, applied when frontmatter supplies no `img` /
 // `portrait`. Beings default to the generic person icon; other actor types add
@@ -279,14 +285,11 @@ export class Actors extends BasePackCompiler {
     }
 
     /**
-     * Both content types `character` and `creature` produce a Foundry `being`
-     * actor; no other distinction propagates to the output.
-     *
      * @param {object} fm - The note's frontmatter.
-     * @returns {boolean} True for a character or creature note.
+     * @returns {boolean} True for a `being` note.
      */
     selects(fm) {
-        return ACTOR_VAULT_TYPES.has(fm.type);
+        return fm.type === ACTOR_VAULT_TYPE;
     }
 
     /**
@@ -304,7 +307,7 @@ export class Actors extends BasePackCompiler {
     }
 
     /**
-     * Compile one character or creature note into a `being`.
+     * Compile one `being` note into its actor document.
      *
      * @param {object} fm - The note's frontmatter.
      * @param {string} markdown - The body, tables expanded and wikilinks
@@ -319,7 +322,7 @@ export class Actors extends BasePackCompiler {
     reportDetail(stats) {
         log.debug(
             `Skipped ${stats.skippedOther} non-actor file(s) ` +
-                `(not character/creature, package:${contentPackage()})`,
+                `(not ${ACTOR_VAULT_TYPE}, package:${contentPackage()})`,
         );
     }
 

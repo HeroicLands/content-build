@@ -363,7 +363,7 @@ export { makeId } from "./ids.mjs";
 
 // The content-type → document-type map, which decides *which* pack list a
 // note's own document is routed against.
-import { packForType } from "./ids.mjs";
+import { assertTypeNotRetired, packForType } from "./ids.mjs";
 
 /* ------------------------------------------------------------------------ */
 /*  Wikilink resolution: the content-wide link index                        */
@@ -380,7 +380,10 @@ import { packForType } from "./ids.mjs";
  * (#1566) would otherwise address every one of them as the first. A note whose
  * declaration is unroutable is indexed against the conventional name and left
  * for the compile pass to report — the index has no business failing a build,
- * and the pass fails it with a far better message.
+ * and the pass fails it with a far better message. The one exception is a
+ * **retired** content type (SoHL#1580): this walk is the first to see every
+ * note together with its path, and unlike an unroutable declaration there is
+ * no pass that would ever claim such a note and report it.
  *
  * @param {string} contentBase - Root of the content tree.
  * @param {object} [router] - The pack router. Supplied by the calling pass so
@@ -392,6 +395,11 @@ export function buildContentLinkIndex(contentBase, router = packRouter()) {
     const docs = [];
     for (const { frontmatter: fm, absPath } of walkMarkdownTree(contentBase)) {
         if (!fm?.id) continue;
+        // The first walk of every note in the tree, and the only one holding
+        // both the declared type and the file that declares it — so a note
+        // left on a retired type is reported here, by name, rather than
+        // several frames deeper with nothing to go on (SoHL#1580).
+        assertTypeNotRetired(fm.type, absPath);
         const base = path.basename(absPath, ".md").replace(/_/g, " ");
         docs.push({
             type: fm.type,

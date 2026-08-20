@@ -79,7 +79,7 @@ name:
   full: Foreign Creature
 id: BBBBBBBBBBBBBBBB
 shortcode: foreigncreature
-type: creature
+type: being
 package: thalorna
 sohl:
   archetype: null

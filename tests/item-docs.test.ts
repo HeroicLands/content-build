@@ -109,7 +109,7 @@ describe("hasDocEntry (whose prose becomes a JournalEntry of its own)", () => {
     });
 
     it("rejects the types that are one document each", () => {
-        for (const type of ["doc", "character", "creature"]) {
+        for (const type of ["doc", "being"]) {
             expect(hasDocEntry(type), type).toBe(false);
         }
     });

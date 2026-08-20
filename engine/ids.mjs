@@ -75,8 +75,7 @@ export const MAP_TYPES = Object.freeze(
 export const PACK_BY_TYPE = Object.freeze({
     doc: { pack: "journals", docType: "JournalEntry" },
     macro: { pack: "macros", docType: "Macro" },
-    character: { pack: "actors", docType: "Actor" },
-    creature: { pack: "actors", docType: "Actor" },
+    being: { pack: "actors", docType: "Actor" },
     ...Object.fromEntries(
         [...MAP_TYPES].map((type) => [
             type,
@@ -84,6 +83,47 @@ export const PACK_BY_TYPE = Object.freeze({
         ]),
     ),
 });
+
+/**
+ * Content types that no longer exist, and what replaced each one.
+ *
+ * `character` and `creature` were retired in favour of the single `being` they
+ * had always compiled into (SoHL#1580). They are recorded here rather than
+ * simply deleted because deleting them is the one change that fails *quietly*:
+ * every type not named in {@link PACK_BY_TYPE} falls through to the open item
+ * set below, so a note or a link left on the old spelling would be routed to
+ * the items pack — a wrong answer, arrived at silently, which is exactly the
+ * failure mode the open-set default exists to avoid for real item types.
+ *
+ * Keeping the names lets {@link assertTypeNotRetired} say what happened and
+ * what to write instead. Entries stay for as long as content in the wild might
+ * still carry them.
+ *
+ * @type {Readonly<Record<string, string>>}
+ */
+export const RETIRED_TYPES = Object.freeze({
+    character: "being",
+    creature: "being",
+});
+
+/**
+ * Throw if `type` names a retired content type.
+ *
+ * @param {string} type - The note's declared `type`, or a link's qualifier.
+ * @param {string} [where] - What carries it — a file path, a link target —
+ *   appended to the message so the reader can go straight to it.
+ * @throws {Error} Naming the replacement type.
+ */
+export function assertTypeNotRetired(type, where) {
+    const replacement = RETIRED_TYPES[type];
+    if (!replacement) return;
+    throw new Error(
+        `Content type "${type}" was retired in favour of "${replacement}"` +
+            (where ? ` — ${where}` : "") +
+            `. Both compiled to the same document, so the fix is mechanical: ` +
+            `write "${replacement}".`,
+    );
+}
 
 /** Where every other content type compiles: the items pack. */
 export const ITEM_PACK = Object.freeze({ pack: "items", docType: "Item" });
@@ -107,8 +147,12 @@ export const ITEM_PACK = Object.freeze({ pack: "items", docType: "Item" });
  *
  * @param {string} type - The target note's `type`.
  * @returns {{pack: string, docType: string}} The pack and document type.
+ * @throws {Error} If `type` names a retired content type — see
+ *   {@link RETIRED_TYPES}. The open-set default would otherwise route it to the
+ *   items pack and say nothing.
  */
 export function packForType(type) {
+    assertTypeNotRetired(type);
     return PACK_BY_TYPE[type] ?? ITEM_PACK;
 }
 
