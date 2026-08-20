@@ -15,7 +15,7 @@ import { DEFAULT_ITEM_ART, defaultItemArt } from "../sohl/default-item-art.mjs";
 // The item-type registry — the one place a type is declared (#1504). Deriving
 // the expectation from it is what stops this map becoming a third list that
 // disagrees with the whitelist and the builder table.
-import { ITEM_TYPES } from "../engine/item-docs.mjs";
+import { itemTypes } from "../engine/item-docs.mjs";
 
 // The `.mjs` map has a precise inferred type (no index signature); view it as a
 // loose record for the string-keyed lookups the tests exercise.
@@ -23,7 +23,7 @@ const ART = DEFAULT_ITEM_ART as Record<string, string | undefined>;
 
 // Every item type the system can create ad-hoc must have a default so it never
 // falls through to Foundry's white `icons/svg/item-bag.svg` (#932).
-const EXPECTED_TYPES = [...ITEM_TYPES];
+const EXPECTED_TYPES = [...itemTypes()];
 
 describe("default-item-art (single source of truth, #932)", () => {
     it("maps every known item type to a themed SoHL asset", () => {

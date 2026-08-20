@@ -14,8 +14,8 @@ import path from "node:path";
 // just the toolchain's own default — a stale note in `thalorna` must fail the
 // same way a stale note in `sohl` does.
 vi.mock("../engine/content-package.mjs", () => ({
-    CONTENT_PACKAGE: "thalorna",
-    FOUNDRY_PACKAGE_ID: "sohl-thalorna",
+    contentPackage: () => "thalorna",
+    foundryPackageId: () => "sohl-thalorna",
 }));
 
 import {

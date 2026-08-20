@@ -13,10 +13,10 @@ import { fileURLToPath } from "node:url";
 
 // Build-time pack configuration (plain ESM, no Foundry). Imported by relative
 // path because the pack-build scripts live outside the `@src` alias tree.
-import { packConfig } from "../engine/pack-config.mjs";
+import { loadPackConfig } from "../engine/pack-config.mjs";
 import {
-    CONTENT_PACKAGE,
-    FOUNDRY_PACKAGE_ID,
+    contentPackage,
+    foundryPackageId,
 } from "../engine/content-package.mjs";
 import {
     resolvePackageManifestPath,
@@ -44,6 +44,15 @@ const MANIFEST = JSON.parse(
     ),
 );
 
+/**
+ * The resolved configuration these cases describe.
+ *
+ * Read once here rather than imported as a constant: the engine resolves it on
+ * first read and not at import, so that the package can be imported — and its
+ * CLI asked its version — with no configuration anywhere above it (#2).
+ */
+const packConfig = loadPackConfig();
+
 /** A throwaway `assets/templates`-shaped directory, `{ fileName: contents }`. */
 function templateDir(files: Record<string, unknown>): string {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), "sohl-packcfg-"));
@@ -64,8 +73,8 @@ describe("this repository's resolved pack configuration", () => {
         // `content-package.mjs` survives as a derived re-export so the link
         // resolver keeps its filesystem-free import path — but it must not be a
         // second place the values are written.
-        expect(CONTENT_PACKAGE).toBe(packConfig.contentPackage);
-        expect(FOUNDRY_PACKAGE_ID).toBe(packConfig.foundryPackage);
+        expect(contentPackage()).toBe(packConfig.contentPackage);
+        expect(foundryPackageId()).toBe(packConfig.foundryPackage);
     });
 
     it("resolves every path against the configured root, not the cwd", () => {

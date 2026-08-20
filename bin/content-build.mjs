@@ -22,6 +22,12 @@
  * consuming repository's build — or a test — can call it without any of this
  * happening (#1507).
  *
+ * The side effects that need *configuration* live inside the command handler,
+ * not at module scope, so `--version` and `--help` answer in a directory that
+ * has neither a `content-build.config.mjs` nor a package manifest (#2).
+ * Running an actual command still resolves both, and still fails loudly when
+ * either is missing.
+ *
  * Every path and pack name it hands the library comes from the consuming
  * repository's `content-build.config.mjs` (#1508), located by
  * `engine/pack-config.mjs`; nothing about any one repository's layout is
@@ -48,7 +54,7 @@ import {
     cleanPacks,
     unpackPacks,
 } from "../engine/compendiums.mjs";
-import { packConfig } from "../engine/pack-config.mjs";
+import { loadPackConfig } from "../engine/pack-config.mjs";
 import { readPackageManifest } from "../engine/package-manifest.mjs";
 
 /**
@@ -82,8 +88,6 @@ function ownVersion() {
         fs.readFileSync(new URL("../package.json", import.meta.url), "utf8"),
     ).version;
 }
-
-fs.mkdirSync(packConfig.paths.unpack, { recursive: true });
 
 // Configure loglevel
 log.setLevel("info"); // Set desired logging level
@@ -132,6 +136,13 @@ function packageCommand() {
             // an unhandled-rejection stack trace. Report the message and set a
             // failing exit code, so a build guard reads as a build failure.
             try {
+                // The one directory the pipeline creates rather than expects:
+                // `unpack` writes the extracted JSON there and `compile` reads
+                // it back. Created here rather than at module scope so that
+                // asking the CLI its version needs no configuration (#2).
+                fs.mkdirSync(loadPackConfig().paths.unpack, {
+                    recursive: true,
+                });
                 switch (action) {
                     // Every path and pack list the library needs is defaulted
                     // from the resolved configuration, so nothing is restated

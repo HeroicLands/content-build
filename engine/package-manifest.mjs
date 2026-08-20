@@ -14,7 +14,7 @@
 /**
  * The Foundry-package-id drift guard.
  *
- * {@link FOUNDRY_PACKAGE_ID} is *configured* in `content-build.config.mjs`
+ * {@link foundryPackageId} is *configured* in `content-build.config.mjs`
  * rather than read from the manifest, so the link resolver stays filesystem-free and
  * unit-testable — which means nothing keeps it in step with the `id` the
  * repository actually ships. Every compendium UUID the compilers emit takes its
@@ -33,8 +33,8 @@
 import fs from "node:fs";
 import path from "node:path";
 
-import { packConfig } from "./pack-config.mjs";
-import { FOUNDRY_PACKAGE_ID } from "./content-package.mjs";
+import { loadPackConfig } from "./pack-config.mjs";
+import { foundryPackageId } from "./content-package.mjs";
 
 /**
  * The manifest templates a repository may ship, in resolution order. Foundry
@@ -58,8 +58,15 @@ export const MANIFEST_TEMPLATES = [
  * here and a *module*-relative path there — the latter of which would have
  * pointed inside `node_modules/@heroiclands/content-build/` once the toolchain
  * is installed rather than vendored.
+ *
+ * An accessor rather than a hoisted constant, so that importing this module
+ * needs no configuration (#2).
+ *
+ * @returns {string} The configured manifest-template directory.
  */
-export const DEFAULT_TEMPLATE_DIR = packConfig.paths.packageManifest;
+export function defaultTemplateDir() {
+    return loadPackConfig().paths.packageManifest;
+}
 
 /**
  * The manifest template this repository ships, as an absolute path.
@@ -75,7 +82,7 @@ export const DEFAULT_TEMPLATE_DIR = packConfig.paths.packageManifest;
  *   can be corroborated. Failing loudly is the feature — a silent fallback is
  *   how every pack came to ship `coreVersion: "14"` (#1533).
  */
-export function resolvePackageManifestPath(templateDir = DEFAULT_TEMPLATE_DIR) {
+export function resolvePackageManifestPath(templateDir = defaultTemplateDir()) {
     const dir = path.resolve(templateDir);
     const manifestPath = MANIFEST_TEMPLATES.map((name) =>
         path.join(dir, name),
@@ -100,7 +107,7 @@ export function resolvePackageManifestPath(templateDir = DEFAULT_TEMPLATE_DIR) {
  * @returns {{ manifestPath: string, manifest: Record<string, any> }}
  * @throws {Error} If no manifest template exists, or one exists but is unreadable.
  */
-export function readPackageManifest(templateDir = DEFAULT_TEMPLATE_DIR) {
+export function readPackageManifest(templateDir = defaultTemplateDir()) {
     const manifestPath = resolvePackageManifestPath(templateDir);
     try {
         return {
@@ -134,7 +141,7 @@ export function assertPackageIdMatchesManifest(
 ) {
     if (!configuredId) {
         throw new Error(
-            "FOUNDRY_PACKAGE_ID is empty — set `foundryPackage` in " +
+            "The configured `foundryPackage` is empty — set it in " +
                 "content-build.config.mjs. " +
                 "It is the first segment of every compendium UUID the pack " +
                 "compilers emit and must name the shipped Foundry package.",
@@ -143,17 +150,17 @@ export function assertPackageIdMatchesManifest(
     if (!manifestId) {
         throw new Error(
             `${manifestPath} declares no "id", so the configured ` +
-                `FOUNDRY_PACKAGE_ID ("${configuredId}") cannot be corroborated. ` +
+                `\`foundryPackage\` ("${configuredId}") cannot be corroborated. ` +
                 "Give the manifest template the id of the Foundry package this " +
                 "repository ships.",
         );
     }
     if (configuredId !== manifestId) {
         throw new Error(
-            `Foundry package id drift: FOUNDRY_PACKAGE_ID is "${configuredId}" ` +
+            `Foundry package id drift: \`foundryPackage\` is "${configuredId}" ` +
                 `(\`foundryPackage\` in content-build.config.mjs), but ` +
                 `${manifestPath} declares "${manifestId}". Every compendium UUID ` +
-                "takes its first segment from FOUNDRY_PACKAGE_ID, so compiling " +
+                "takes its first segment from it, so compiling " +
                 "now would emit documents addressing a package this repository " +
                 "does not ship. " +
                 "Make the two agree before building.",
@@ -172,7 +179,7 @@ export function assertPackageIdMatchesManifest(
  * @returns {{ manifestPath: string, packageId: string|undefined }}
  * @throws {Error} If no manifest template exists, or one exists but is unreadable.
  */
-export function readManifestPackageId(templateDir = DEFAULT_TEMPLATE_DIR) {
+export function readManifestPackageId(templateDir = defaultTemplateDir()) {
     const { manifestPath, manifest } = readPackageManifest(templateDir);
     return { manifestPath, packageId: manifest.id };
 }
@@ -181,13 +188,13 @@ export function readManifestPackageId(templateDir = DEFAULT_TEMPLATE_DIR) {
  * Fail the build unless the configured Foundry package id matches the manifest
  * template on disk. The one call a build entry point makes.
  *
- * @param {string} [configuredId] - Defaults to {@link FOUNDRY_PACKAGE_ID}.
- * @param {string} [templateDir] - Defaults to {@link DEFAULT_TEMPLATE_DIR}.
+ * @param {string} [configuredId] - Defaults to {@link foundryPackageId}.
+ * @param {string} [templateDir] - Defaults to {@link defaultTemplateDir}.
  * @throws {Error} On drift, or when the manifest cannot be read.
  */
 export function assertPackageIdMatchesManifestFile(
-    configuredId = FOUNDRY_PACKAGE_ID,
-    templateDir = DEFAULT_TEMPLATE_DIR,
+    configuredId = foundryPackageId(),
+    templateDir = defaultTemplateDir(),
 ) {
     const { manifestPath, packageId } = readManifestPackageId(templateDir);
     assertPackageIdMatchesManifest(configuredId, packageId, { manifestPath });

@@ -170,15 +170,32 @@ id helpers, so it cannot. `ITEM_BUILDERS` is imported from its own leaf entry
 point for the same reason. Set `CONTENT_BUILD_CONFIG` to point at the file
 explicitly if a consumer keeps it somewhere else.
 
+**The configuration is resolved on first read, never at import.** Every module
+here can be imported — and `content-build --version` and `--help` answered — in a
+directory with no `content-build.config.mjs` and no Foundry package manifest, so
+a consumer can reach for one pure helper (`engine/content-slug`,
+`engine/wikilinks`) without standing up a pack build. Anything derived from
+configuration is therefore an accessor rather than a hoisted constant —
+`loadPackConfig()`, `contentPackage()`, `foundryPackageId()`, `itemTypes()`,
+`docEntryTypes()`, `packRouter()`, `defaultTemplateDir()` — and each throws, with
+the same explicit message as before, the moment a build actually needs a value it
+cannot find. Absence is still a hard failure; only the moment it is reported
+moved (#2).
+
+The file is loaded with `require`, so that reading a configured value stays an
+ordinary synchronous expression instead of making every module downstream of it
+an async one. The one shape that cannot be loaded is a config whose own module
+graph uses top-level `await`, which is reported as such.
+
 **`itemBuilders` is how the engine learns a consumer's item types without
 holding its data model.** `itemTypes` is its key set, and `docEntryTypes` — every
 type whose prose compiles into a JournalEntry of its own — is composed from it
-exactly once, here, and read from `packConfig` everywhere. There is one resolved
-set at runtime; the compilers and the link-manifest emitter cannot come to
-disagree about which notes carry documentation.
+exactly once, here, and read through `loadPackConfig()` everywhere. There is one
+resolved set at runtime; the compilers and the link-manifest emitter cannot come
+to disagree about which notes carry documentation.
 
 The Item compiler **dispatches through that same resolved table**, via
-`engine/item-registry.mjs` (`ITEM_TYPES` and `itemBuilder(type)`), so the types a
+`engine/item-registry.mjs` (`itemTypes()` and `itemBuilder(type)`), so the types a
 consumer's notes are accepted for and the builders they compile with are one
 object. Supplying `itemBuilders` is therefore all a consumer does to define an
 item type of its own; a table this package ships is one possible value, not the

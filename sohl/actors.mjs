@@ -50,14 +50,12 @@ import {
     makeId,
     resolveName,
     resolveImg,
-    buildStats,
+    defaultStats,
     withArchetypeFlag,
     md,
 } from "../engine/helpers.mjs";
 import { BasePackCompiler } from "../engine/base-compiler.mjs";
-import { CONTENT_PACKAGE } from "../engine/content-package.mjs";
-
-const STATS = buildStats();
+import { contentPackage } from "../engine/content-package.mjs";
 
 /**
  * The content type this pass claims. A note's `type` names the Foundry document
@@ -324,7 +322,7 @@ export class Actors extends BasePackCompiler {
     reportDetail(stats) {
         log.debug(
             `Skipped ${stats.skippedOther} non-actor file(s) ` +
-                `(not ${ACTOR_VAULT_TYPE}, package:${CONTENT_PACKAGE})`,
+                `(not ${ACTOR_VAULT_TYPE}, package:${contentPackage()})`,
         );
     }
 
@@ -514,7 +512,7 @@ export class Actors extends BasePackCompiler {
             // `sohl.archetype` (required nullable number) drives
             // `flags.sohl.docArchetype` (#640 / archetype contract #604).
             flags: withArchetypeFlag(fm, fm.flags, ctx),
-            _stats: STATS,
+            _stats: defaultStats(),
             _key: `!actors!${id}`,
         };
     }

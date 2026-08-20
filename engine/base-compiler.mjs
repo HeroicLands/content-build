@@ -53,7 +53,7 @@
  *
  * **This class knows nothing about any game system.** Which types a pack claims
  * arrives through `selects`, so the type membership stays in the one place that
- * owns it — for the doc-carrying types, the single `DOC_ENTRY_TYPES` set in
+ * owns it — for the doc-carrying types, the single `docEntryTypes` set in
  * `item-docs.mjs` that the compilers and the link manifest both read.
  *
  * @module
@@ -72,7 +72,7 @@ import {
     collectContentDocs,
     expandNoteTables,
 } from "./helpers.mjs";
-import { CONTENT_PACKAGE } from "./content-package.mjs";
+import { contentPackage } from "./content-package.mjs";
 import { assertTypeNotRetired, packForType } from "./ids.mjs";
 
 /**
@@ -480,7 +480,7 @@ export class BasePackCompiler {
         for (const { frontmatter: fm, body, absPath } of walkMarkdownTree(
             this.contentBase,
         )) {
-            if (!fm || fm.package !== CONTENT_PACKAGE) {
+            if (!fm || fm.package !== contentPackage()) {
                 stats.skippedOther++;
                 continue;
             }

@@ -19,6 +19,16 @@
  * identity, the item-type membership, and the pack list — arrives from the
  * consuming repository's `content-build.config.mjs` (#1508).
  *
+ * **Resolved on first read, never at import (#2).** {@link loadPackConfig}
+ * is a function rather than a module-level constant, so importing this module —
+ * or the `engine` barrel, or a leaf module that happens to sit downstream of it
+ * — costs nothing and requires nothing. A repository with no configuration can
+ * still ask the CLI its version, and a consumer can still import a pure helper
+ * (`engine/content-slug`, `engine/wikilinks`) without standing up a whole pack
+ * build. The absence is still loud, just at the moment a configured value is
+ * actually needed: every accessor in the engine funnels through here, so
+ * anything that reads configuration throws with the message below.
+ *
  * **Located by walking up from this module, not from the working directory.**
  * The config file sits at the root of the repository that installed the
  * toolchain, so climbing out of `node_modules/@heroiclands/content-build/engine/`
@@ -28,6 +38,14 @@
  * the very property #1508 removed. `CONTENT_BUILD_CONFIG` names the file
  * explicitly when a consumer keeps it somewhere else.
  *
+ * **Loaded synchronously**, with `require` rather than `await import`, so that
+ * reading configuration is an ordinary expression at any call site instead of
+ * making every module downstream of it an async one. Node has supported
+ * `require()` of an ES module since v22.12 and this package requires v24, so
+ * the only shape it cannot load is a config whose own module graph uses
+ * top-level `await` — which is reported as such rather than as an opaque
+ * loader error.
+ *
  * **A consumer's config file must import `defineConfig` from
  * `@heroiclands/content-build/config`, never from the package root barrel.**
  * The barrel pulls in the compilers, the compilers read this module, and this
@@ -36,15 +54,15 @@
  * imports nothing but `node:path`, so it cannot.
  *
  * Reading it costs no I/O beyond loading that one file: `defineConfig` only
- * validates and freezes, so importing this module remains as side-effect-free
- * as the pack library it serves.
+ * validates and freezes, so this module remains as side-effect-free as the pack
+ * library it serves.
  *
  * @module
  */
 
 import fs from "node:fs";
 import path from "node:path";
-import { pathToFileURL } from "node:url";
+import { createRequire } from "node:module";
 
 /** The file name every consuming repository declares its build in. */
 export const CONFIG_FILENAME = "content-build.config.mjs";
@@ -67,23 +85,60 @@ export function findConfigFile(from) {
     }
 }
 
-const explicit = process.env.CONTENT_BUILD_CONFIG;
-const configPath =
-    explicit ? path.resolve(explicit) : findConfigFile(import.meta.dirname);
+const require = createRequire(import.meta.url);
 
-if (!configPath || !fs.existsSync(configPath)) {
-    throw new Error(
-        `content-build: no ${CONFIG_FILENAME} found at or above ` +
-            `${import.meta.dirname}. A consuming repository declares its build ` +
-            `in one file at its root; set CONTENT_BUILD_CONFIG to name it ` +
-            `elsewhere.`,
-    );
-}
+/** The loaded configuration, memoised — the file is read at most once. */
+let loaded;
 
 /**
  * The consuming repository's resolved, frozen configuration.
  *
- * @type {import("../config.mjs").ContentBuildConfig}
+ * Every engine module that needs a configured value calls this, rather than
+ * hoisting one at import: that is what keeps the library importable without a
+ * configuration (#2). The result is memoised, so calling it in a default
+ * parameter — the usual spelling here — costs one property read per call.
+ *
+ * @returns {import("../config.mjs").ContentBuildConfig} The frozen configuration.
+ * @throws {Error} When no configuration file can be found, or the one named
+ *   cannot be loaded. Absence is a defect, not a fallback: without it the
+ *   compilers know neither what to compile nor where to put it.
  */
-export const packConfig = (await import(pathToFileURL(configPath).href))
-    .default;
+export function loadPackConfig() {
+    if (loaded) return loaded;
+
+    const explicit = process.env.CONTENT_BUILD_CONFIG;
+    const configPath =
+        explicit ? path.resolve(explicit) : findConfigFile(import.meta.dirname);
+
+    if (!configPath || !fs.existsSync(configPath)) {
+        throw new Error(
+            explicit ?
+                `content-build: CONTENT_BUILD_CONFIG names ${configPath}, ` +
+                    `which does not exist.`
+            :   `content-build: no ${CONFIG_FILENAME} found at or above ` +
+                    `${import.meta.dirname}. A consuming repository declares its ` +
+                    `build in one file at its root; set CONTENT_BUILD_CONFIG to ` +
+                    `name it elsewhere.`,
+        );
+    }
+
+    let module;
+    try {
+        module = require(configPath);
+    } catch (err) {
+        if (err?.code === "ERR_REQUIRE_ASYNC_MODULE") {
+            throw new Error(
+                `content-build: ${configPath} (or something it imports) uses ` +
+                    `top-level await, which the configuration cannot: it is ` +
+                    `read synchronously so that reading a configured value ` +
+                    `stays an ordinary expression. Move the awaited work into ` +
+                    `the build that consumes the configuration.`,
+                { cause: err },
+            );
+        }
+        throw err;
+    }
+
+    loaded = module.default ?? module;
+    return loaded;
+}

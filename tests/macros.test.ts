@@ -24,9 +24,9 @@ import {
     resolveMacroType,
 } from "../engine/macros.mjs";
 import {
-    DOC_ENTRY_TYPES,
+    docEntryTypes,
     hasDocEntry,
-    ITEM_TYPES,
+    itemTypes,
     itemDocEntryId,
 } from "../engine/item-docs.mjs";
 import { splitPages, buildPages } from "../engine/journals.mjs";
@@ -285,10 +285,12 @@ describe("a macro note carries documentation like an item does", () => {
     });
 
     it("keeps every item type doc-carrying", () => {
-        for (const t of ITEM_TYPES) expect(hasDocEntry(t)).toBe(true);
+        for (const t of itemTypes()) expect(hasDocEntry(t)).toBe(true);
         // Every item type, plus `macro`, plus the three map types — a map
         // note's prose is a JournalEntry of its own too (#1525).
-        expect(DOC_ENTRY_TYPES.size).toBe(ITEM_TYPES.size + 1 + MAP_TYPES.size);
+        expect(docEntryTypes().size).toBe(
+            itemTypes().size + 1 + MAP_TYPES.size,
+        );
     });
 
     it("leaves `doc` notes and actors alone — they are one document each", () => {

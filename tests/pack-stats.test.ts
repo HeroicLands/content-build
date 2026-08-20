@@ -13,7 +13,7 @@ import { fileURLToPath } from "node:url";
 // Build-time pack helper (plain ESM, no Foundry). Imported by relative path
 // because the pack-build scripts live outside the `@src` alias tree.
 import { buildStats as buildStatsRaw } from "../engine/helpers.mjs";
-import { packConfig } from "../engine/pack-config.mjs";
+import { loadPackConfig } from "../engine/pack-config.mjs";
 import { defineConfig } from "../index.mjs";
 
 // The pack helpers are plain ESM whose JSDoc types the return as `object`.
@@ -108,9 +108,11 @@ describe("the `_stats` stamp is configuration, not a literal (#1508)", () => {
         // Four call sites used to pass the same frozen "0.6.0" literal; the
         // version now has one home, and so do the other two stamped fields.
         const stats = buildStats();
-        expect(stats.systemId).toBe(packConfig.stats.systemId);
-        expect(stats.systemVersion).toBe(packConfig.stats.systemVersion);
-        expect(stats.lastModifiedBy).toBe(packConfig.stats.lastModifiedBy);
+        expect(stats.systemId).toBe(loadPackConfig().stats.systemId);
+        expect(stats.systemVersion).toBe(loadPackConfig().stats.systemVersion);
+        expect(stats.lastModifiedBy).toBe(
+            loadPackConfig().stats.lastModifiedBy,
+        );
     });
 
     it("stamps a non-`sohl` consumer's own identity", () => {

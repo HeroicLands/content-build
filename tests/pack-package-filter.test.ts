@@ -15,8 +15,8 @@ import path from "node:path";
 // package's notes compiles them. Mocking the configuration to a package that is
 // not "sohl" is what tells a configured read apart from a hard-coded literal.
 vi.mock("../engine/content-package.mjs", () => ({
-    CONTENT_PACKAGE: "thalorna",
-    FOUNDRY_PACKAGE_ID: "sohl-thalorna",
+    contentPackage: () => "thalorna",
+    foundryPackageId: () => "sohl-thalorna",
 }));
 
 // Build-time pack compilers (plain ESM, no Foundry). Imported by relative path

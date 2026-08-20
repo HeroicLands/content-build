@@ -52,7 +52,7 @@
  */
 
 import { packForType } from "./ids.mjs";
-import { packConfig } from "./pack-config.mjs";
+import { loadPackConfig } from "./pack-config.mjs";
 
 /**
  * A note that cannot be routed to a pack. Thrown rather than returned so no
@@ -242,5 +242,13 @@ export function routerFor(config) {
 /**
  * The consuming repository's own router — what every module that emits a UUID
  * asks where a note's document lives.
+ *
+ * An accessor rather than a hoisted constant, so that importing this module
+ * needs no configuration (#2). {@link routerFor} keeps one router per
+ * configuration object, so repeated calls return the same instance.
+ *
+ * @returns {ReturnType<typeof createPackRouter>} This repository's router.
  */
-export const packRouter = routerFor(packConfig);
+export function packRouter() {
+    return routerFor(loadPackConfig());
+}

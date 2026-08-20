@@ -41,7 +41,7 @@ import {
     sohlField,
     resolveName,
     resolveImg,
-    buildStats,
+    defaultStats,
     withArchetypeFlag,
 } from "../engine/helpers.mjs";
 import { BasePackCompiler } from "../engine/base-compiler.mjs";
@@ -51,15 +51,13 @@ import { BasePackCompiler } from "../engine/base-compiler.mjs";
 // resolves to garbage once this pipeline runs from `node_modules` (#1510).
 import { defaultItemArt } from "./default-item-art.mjs";
 import { journalPageId, splitPages } from "../engine/journals.mjs";
-import { FOUNDRY_PACKAGE_ID } from "../engine/content-package.mjs";
+import { foundryPackageId } from "../engine/content-package.mjs";
 import { itemDocEntryId, itemDocPointer } from "../engine/item-docs.mjs";
 // The whitelist and the per-type `system` builders both come from the resolved
 // configuration, so the types this pass claims and the builders it compiles
 // them with are one table — the consuming repository's, not this package's
 // (#1504/#1563).
-import { ITEM_TYPES, itemBuilder } from "../engine/item-registry.mjs";
-
-const STATS = buildStats();
+import { itemTypes, itemBuilder } from "../engine/item-registry.mjs";
 
 /**
  * The description an item carries: a pointer to its **item doc**, the
@@ -85,7 +83,7 @@ function itemDescription(markdown, fm, name) {
     if (!String(markdown).trim()) return "";
     const [leadPage] = splitPages(markdown, name);
     const pageId = journalPageId(itemDocEntryId(fm.id), leadPage, 0);
-    return itemDocPointer(FOUNDRY_PACKAGE_ID, fm.id, name, pageId);
+    return itemDocPointer(foundryPackageId(), fm.id, name, pageId);
 }
 
 /**
@@ -120,7 +118,7 @@ export class Items extends BasePackCompiler {
      *
      * @type {Record<string, number>}
      */
-    counts = Object.fromEntries([...ITEM_TYPES].map((t) => [t, 0]));
+    counts = Object.fromEntries([...itemTypes()].map((t) => [t, 0]));
 
     /**
      * Every content type that compiles into an item.
@@ -129,7 +127,7 @@ export class Items extends BasePackCompiler {
      * @returns {boolean} True for a whitelisted item type.
      */
     selects(fm) {
-        return Boolean(fm.type) && ITEM_TYPES.has(fm.type);
+        return Boolean(fm.type) && itemTypes().has(fm.type);
     }
 
     /** An item is named by its own type in the log, not by "item". */
@@ -171,7 +169,7 @@ export class Items extends BasePackCompiler {
             // `sohl.archetype` (required nullable number) drives
             // `flags.sohl.docArchetype` (#640 / archetype contract #604).
             flags: withArchetypeFlag(fm, fm.flags, `item "${name}"`),
-            _stats: STATS,
+            _stats: defaultStats(),
             ownership: { default: 0 },
             folder,
             _key: `!items!${id}`,

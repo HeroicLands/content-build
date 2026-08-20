@@ -731,8 +731,8 @@ export function defineConfig(config) {
         paths: normalizePaths(input.paths, rootDir),
         stats: normalizeStats(input.stats),
         itemBuilders,
-        // Resolved once, here, and read everywhere as `packConfig.itemTypes` /
-        // `packConfig.docEntryTypes`. The doc-entry *concept* is the engine's —
+        // Resolved once, here, and read everywhere through
+        // `loadPackConfig()`. The doc-entry *concept* is the engine's —
         // a note that carries documentation is not a SoHL idea — but the
         // membership is the consumer's, and there is exactly one resolved set at
         // runtime. Two would drift, which is the whole reason the composition
