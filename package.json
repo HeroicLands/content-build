@@ -48,7 +48,11 @@
     "scripts": {
         "test": "vitest run",
         "test:watch": "vitest",
-        "prepack": "cd ../.. && npm run build:content-build-types"
+        "prepack": "npm run build:types",
+        "build:types": "tsc -p tsconfig.dts.json",
+        "format": "prettier --write .",
+        "format:check": "prettier --check .",
+        "prepare": "git config core.hooksPath .githooks || true"
     },
     "dependencies": {
         "@foundryvtt/foundryvtt-cli": "^3.0.4",
@@ -61,13 +65,16 @@
         "yargs": "^18.1.0"
     },
     "devDependencies": {
+        "prettier": "^3.6.2",
+        "typescript": "^5.9.2",
         "vitest": "^3.1.2"
     },
     "engines": {
         "node": ">=24.0.0"
     },
     "publishConfig": {
-        "access": "public"
+        "access": "public",
+        "provenance": true
     },
     "keywords": [
         "foundry-vtt",
@@ -81,10 +88,9 @@
     "homepage": "https://heroiclands.org",
     "repository": {
         "type": "git",
-        "url": "git+https://github.com/HeroicLands/Song-of-Heroic-Lands-FoundryVTT.git",
-        "directory": "packages/content-build"
+        "url": "git+https://github.com/HeroicLands/content-build.git"
     },
     "bugs": {
-        "url": "https://github.com/HeroicLands/Song-of-Heroic-Lands-FoundryVTT/issues"
+        "url": "https://github.com/HeroicLands/content-build/issues"
     }
 }

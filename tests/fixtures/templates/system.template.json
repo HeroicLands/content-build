@@ -1,0 +1,10 @@
+{
+    "id": "sohl",
+    "title": "Fixture package manifest",
+    "description": "Not a shippable Foundry manifest. This exists so the manifest-reading code has something to read in this package's own test suite; the real manifests live in the consuming repositories.",
+    "compatibility": {
+        "minimum": "14",
+        "verified": "14"
+    },
+    "version": "0.0.0"
+}
