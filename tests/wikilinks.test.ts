@@ -57,7 +57,7 @@ const DOCS = [
         aliases: ["Climbing"],
     },
     {
-        type: "creature",
+        type: "being",
         id: "ccccccccccccccc1",
         shortcode: "condor",
         name: "Condor",
@@ -98,11 +98,7 @@ describe("packForType (content type → the pack it compiles into)", () => {
             pack: "macros",
             docType: "Macro",
         });
-        expect(packForType("character")).toEqual({
-            pack: "actors",
-            docType: "Actor",
-        });
-        expect(packForType("creature")).toEqual({
+        expect(packForType("being")).toEqual({
             pack: "actors",
             docType: "Actor",
         });
@@ -116,8 +112,7 @@ describe("packForType (content type → the pack it compiles into)", () => {
         }
         expect(Object.keys(PACK_BY_TYPE).sort()).toEqual([
             "battlemap",
-            "character",
-            "creature",
+            "being",
             "doc",
             "localmap",
             "macro",
@@ -201,7 +196,7 @@ describe("convertWikilinks", () => {
     });
 
     it("routes actor and macro types to their packs", () => {
-        expect(convert("[[creature/condor|Condor]]").markdown).toBe(
+        expect(convert("[[being/condor|Condor]]").markdown).toBe(
             "@UUID[Compendium.sohl.actors.Actor.ccccccccccccccc1]{Condor}",
         );
         expect(convert("[[macro/rollit|Roll It]]").markdown).toBe(
@@ -369,11 +364,11 @@ describe("convertWikilinks — the `doc<type>` virtual qualifier", () => {
     });
 
     it("rejects `doc` applied to a type that has no item doc", () => {
-        // `doc` and `creature` compile to the journals and actors packs
+        // `doc` and `being` compile to the journals and actors packs
         // respectively; neither has an item doc to address.
         for (const [link, text, target] of [
             ["[[docdoc/shock|Shock]]", "Shock", "docdoc/shock"],
-            ["[[doccreature/condor|Condor]]", "Condor", "doccreature/condor"],
+            ["[[docbeing/condor|Condor]]", "Condor", "docbeing/condor"],
         ]) {
             const { markdown, unresolved } = convert(link);
             // The author's text survives, marked so the reader can tell a link
@@ -410,7 +405,7 @@ describe("convertWikilinks — the `doc<type>` virtual qualifier", () => {
     });
 
     it("ignores an anchor on an actor or a macro for the same reason", () => {
-        expect(convert("[[creature/condor#wings|Condor]]").markdown).toBe(
+        expect(convert("[[being/condor#wings|Condor]]").markdown).toBe(
             "@UUID[Compendium.sohl.actors.Actor.ccccccccccccccc1]{Condor}",
         );
         expect(convert("[[macro/rollit#step|Roll It]]").markdown).toBe(
@@ -488,7 +483,7 @@ describe("convertWikilinks — the `type-shortcode` separator (#1398)", () => {
         expect(convert("[[skill-climb|Climbing]]").markdown).toBe(
             "@UUID[Compendium.sohl.items.Item.bbbbbbbbbbbbbbb1]{Climbing}",
         );
-        expect(convert("[[creature-condor|Condor]]").markdown).toBe(
+        expect(convert("[[being-condor|Condor]]").markdown).toBe(
             "@UUID[Compendium.sohl.actors.Actor.ccccccccccccccc1]{Condor}",
         );
     });
@@ -641,7 +636,7 @@ describe("convertWikilinks — an unlabelled link (#1409)", () => {
 });
 
 describe("readQualifier — the optional package segment (#1499)", () => {
-    const TYPES = new Set(["skill", "doc", "creature"]);
+    const TYPES = new Set(["skill", "doc", "being"]);
     const PACKAGES = new Set(["sohl", "thalorna"]);
 
     it("reads a package-qualified address and reports the package", () => {

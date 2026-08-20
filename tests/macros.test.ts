@@ -293,8 +293,7 @@ describe("a macro note carries documentation like an item does", () => {
 
     it("leaves `doc` notes and actors alone — they are one document each", () => {
         expect(hasDocEntry("doc")).toBe(false);
-        expect(hasDocEntry("character")).toBe(false);
-        expect(hasDocEntry("creature")).toBe(false);
+        expect(hasDocEntry("being")).toBe(false);
     });
 
     it("compiles the {#script} page into the journal, withholding nothing", () => {

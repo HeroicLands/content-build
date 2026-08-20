@@ -73,7 +73,7 @@ import {
     expandNoteTables,
 } from "./helpers.mjs";
 import { CONTENT_PACKAGE } from "./content-package.mjs";
-import { packForType } from "./ids.mjs";
+import { assertTypeNotRetired, packForType } from "./ids.mjs";
 
 /**
  * The tallies one pass accumulates while walking the tree.
@@ -480,7 +480,17 @@ export class BasePackCompiler {
         for (const { frontmatter: fm, body, absPath } of walkMarkdownTree(
             this.contentBase,
         )) {
-            if (!fm || fm.package !== CONTENT_PACKAGE || !this.selects(fm)) {
+            if (!fm || fm.package !== CONTENT_PACKAGE) {
+                stats.skippedOther++;
+                continue;
+            }
+            // Checked before `selects`, and therefore for every note this
+            // package owns rather than only the ones some pass claims. A
+            // retired type is claimed by no pass, so the alternative is not a
+            // wrong document — it is no document, skipped as quietly as the
+            // thousands of notes that legitimately belong to another pass.
+            assertTypeNotRetired(fm.type, absPath);
+            if (!this.selects(fm)) {
                 stats.skippedOther++;
                 continue;
             }
