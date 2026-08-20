@@ -9,23 +9,14 @@ import { describe, it, expect } from "vitest";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
 
-// Build-time pack helpers (plain ESM, no Foundry). Imported by relative path
-// because the pack-build scripts live outside the `@src` alias tree.
+// Build-time pack helpers (plain ESM, no Foundry).
 import {
     MANIFEST_TEMPLATES,
     assertPackageIdMatchesManifest,
     assertPackageIdMatchesManifestFile,
     readManifestPackageId,
 } from "../engine/package-manifest.mjs";
-import { FOUNDRY_PACKAGE_ID } from "../engine/content-package.mjs";
-
-// Anchored on this file, not the working directory (see pack-config.test.ts).
-const REPO_ROOT = path.resolve(
-    path.dirname(fileURLToPath(import.meta.url)),
-    "../../..",
-);
 
 /** A throwaway `assets/templates`-shaped directory, `{ fileName: contents }`. */
 function templateDir(files: Record<string, string>): string {
@@ -140,14 +131,10 @@ describe("assertPackageIdMatchesManifestFile — the thin caller", () => {
         ).not.toThrow();
     });
 
-    it("this repository's own manifest agrees with FOUNDRY_PACKAGE_ID", () => {
-        // The regression the guard exists for (#1503): every compiled UUID takes
-        // its first segment from FOUNDRY_PACKAGE_ID.
-        expect(() =>
-            assertPackageIdMatchesManifestFile(
-                FOUNDRY_PACKAGE_ID,
-                path.join(REPO_ROOT, "assets/templates"),
-            ),
-        ).not.toThrow();
-    });
+    // The companion case — "a *consuming* repository's own manifest agrees with
+    // FOUNDRY_PACKAGE_ID", the regression #1503 exists for — is not here. It
+    // asserts about a repository that ships a Foundry package, which this one
+    // does not, so it lives with each consumer: see `tests/build/` in
+    // Song-of-Heroic-Lands-FoundryVTT. What stays here is the guard itself,
+    // exercised against fixture directories above.
 });

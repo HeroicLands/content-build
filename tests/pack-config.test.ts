@@ -25,16 +25,21 @@ import {
 } from "../engine/package-manifest.mjs";
 import { supportedCoreVersion } from "../engine/helpers.mjs";
 
-// Anchored on this file, not the working directory: the package's own test
-// script runs from `packages/content-build/`, and the repository build runs
-// from the root — the same paths have to resolve from either.
-const REPO_ROOT = path.resolve(
+// Anchored on this file, not the working directory: the same paths have to
+// resolve whichever directory the suite is launched from.
+//
+// What is under test is the *resolution mechanism* — that configured paths are
+// absolute and anchored on the configured root — so the root it checks against
+// is this package's own, supplied by the development config at the repository
+// root. It used to be the system repository's root, which only resolved while
+// this package was vendored inside it.
+const PKG_ROOT = path.resolve(
     path.dirname(fileURLToPath(import.meta.url)),
-    "../../..",
+    "..",
 );
 const MANIFEST = JSON.parse(
     fs.readFileSync(
-        path.join(REPO_ROOT, "assets/templates/system.template.json"),
+        path.join(PKG_ROOT, "tests/fixtures/templates/system.template.json"),
         "utf8",
     ),
 );
@@ -66,13 +71,13 @@ describe("this repository's resolved pack configuration", () => {
     it("resolves every path against the configured root, not the cwd", () => {
         for (const [key, value] of Object.entries(packConfig.paths)) {
             expect(path.isAbsolute(value as string), key).toBe(true);
-            expect(String(value).startsWith(REPO_ROOT), key).toBe(true);
+            expect(String(value).startsWith(PKG_ROOT), key).toBe(true);
         }
         expect(packConfig.paths.content).toBe(
-            path.join(REPO_ROOT, "assets/content"),
+            path.join(PKG_ROOT, "assets/content"),
         );
         expect(packConfig.paths.packJson).toBe(
-            path.join(REPO_ROOT, "build/packs-json"),
+            path.join(PKG_ROOT, "build/packs-json"),
         );
     });
 

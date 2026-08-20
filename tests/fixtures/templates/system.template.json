@@ -1,10 +1,18 @@
 {
     "id": "sohl",
     "title": "Fixture package manifest",
-    "description": "Not a shippable Foundry manifest. This exists so the manifest-reading code has something to read in this package's own test suite; the real manifests live in the consuming repositories.",
+    "description": "Not a shippable Foundry manifest. This exists so the manifest-reading code has something to read in this package's own test suite; the real manifests live in the consuming repositories. `packs` mirrors the pack list in the repository-root development config, because one of the checks is that the two agree.",
     "compatibility": {
-        "minimum": "14",
-        "verified": "14"
+        "minimum": "14.359",
+        "verified": "14.359"
     },
-    "version": "0.0.0"
+    "version": "0.0.0",
+    "packs": [
+        { "name": "items", "type": "Item" },
+        { "name": "journals", "type": "JournalEntry" },
+        { "name": "actors", "type": "Actor" },
+        { "name": "macros", "type": "Macro" },
+        { "name": "scenes", "type": "Scene" },
+        { "name": "adventures", "type": "Adventure" }
+    ]
 }

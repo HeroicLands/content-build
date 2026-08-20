@@ -50,6 +50,10 @@ export default defineConfig({
 
     itemBuilders: ITEM_BUILDERS,
 
+    // A content tree opened as an Obsidian vault keeps its templater
+    // scaffolding in `Templates/`, which is never compendium content.
+    skipDirectories: ["Templates"],
+
     packs: [
         { name: "items", type: "Item", folders: "item-folders.yaml" },
         {

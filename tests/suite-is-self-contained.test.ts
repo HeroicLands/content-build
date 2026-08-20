@@ -35,6 +35,18 @@ const FOUNDRY_GLOBAL = /\bglobalThis\b[^\n]*?\.\s*game\b/;
 /** An import of the consuming repository's system source. */
 const SRC_IMPORT = /["'](?:@src\/|(?:\.\.\/)+src\/)/;
 
+/**
+ * A path that climbs out of the package.
+ *
+ * `tests/` sits one level below the package root, so `..` reaches the root and
+ * is fine; `../..` and beyond leave it. Until this package was extracted, five
+ * files resolved `"../../.."` and asserted about whatever happened to be there
+ * — which was the system repository, because the package was vendored inside
+ * it. Those assertions passed for a reason that stopped being true, and the
+ * suite claimed a severance it did not have (#1).
+ */
+const ESCAPES_PACKAGE = /["'](?:\.\.\/){2,}/;
+
 /** Every `.test.ts` in this suite except this file, recursively. */
 function suiteFiles(dir: string): string[] {
     return fs.readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
@@ -53,22 +65,28 @@ describe("the content-build suite needs nothing from a consuming repository", ()
         expect(files.length).toBeGreaterThan(0);
     });
 
-    it.each(files)("%s stays free of Foundry and of src/", (file) => {
-        const offenders = fs
-            .readFileSync(file, "utf8")
-            .split("\n")
-            .map((line, i) => ({ line: line.trim(), n: i + 1 }))
-            .filter(
-                ({ line }) =>
-                    FOUNDRY_GLOBAL.test(line) || SRC_IMPORT.test(line),
-            );
-        expect(
-            offenders,
-            `${path.relative(HERE, file)} reaches a Foundry global or the ` +
-                `system source. The package has neither when it is installed ` +
-                `from npm; a test that needs them belongs in the repository's ` +
-                `own tests/build/ suite:\n` +
-                offenders.map((o) => `  L${o.n}: ${o.line}`).join("\n"),
-        ).toEqual([]);
-    });
+    it.each(files)(
+        "%s stays free of Foundry, of src/, and of any host repository",
+        (file) => {
+            const offenders = fs
+                .readFileSync(file, "utf8")
+                .split("\n")
+                .map((line, i) => ({ line: line.trim(), n: i + 1 }))
+                .filter(
+                    ({ line }) =>
+                        FOUNDRY_GLOBAL.test(line) ||
+                        SRC_IMPORT.test(line) ||
+                        ESCAPES_PACKAGE.test(line),
+                );
+            expect(
+                offenders,
+                `${path.relative(HERE, file)} reaches a Foundry global, the ` +
+                    `system source, or a path above the package root. The ` +
+                    `package has none of those when it is installed from npm; ` +
+                    `a test that needs them belongs in the consuming ` +
+                    `repository's own tests/build/ suite:\n` +
+                    offenders.map((o) => `  L${o.n}: ${o.line}`).join("\n"),
+            ).toEqual([]);
+        },
+    );
 });

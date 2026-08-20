@@ -21,13 +21,17 @@ const buildStats = (systemVersion?: string, config?: unknown): any =>
     buildStatsRaw(systemVersion as any, config as any);
 
 // Anchored on this file, not the working directory (see pack-config.test.ts).
-const REPO_ROOT = path.resolve(
+// This package owns its manifest fixture: what is under test is how a manifest's
+// supported floor becomes a `_stats.coreVersion`, which is package behaviour. It
+// used to read the *system repository's* real manifest, which only resolved
+// while this package was vendored inside it.
+const PKG_ROOT = path.resolve(
     path.dirname(fileURLToPath(import.meta.url)),
-    "../../..",
+    "..",
 );
 const MANIFEST = JSON.parse(
     fs.readFileSync(
-        path.join(REPO_ROOT, "assets/templates/system.template.json"),
+        path.join(PKG_ROOT, "tests/fixtures/templates/system.template.json"),
         "utf8",
     ),
 );
@@ -111,7 +115,7 @@ describe("the `_stats` stamp is configuration, not a literal (#1508)", () => {
 
     it("stamps a non-`sohl` consumer's own identity", () => {
         const moduleConfig = defineConfig({
-            rootDir: REPO_ROOT,
+            rootDir: PKG_ROOT,
             contentPackage: "thalorna",
             foundryPackage: "sohl-thalorna",
             packageKind: "modules",
@@ -120,13 +124,14 @@ describe("the `_stats` stamp is configuration, not a literal (#1508)", () => {
                 systemVersion: "0.1.0",
                 lastModifiedBy: "thalornabuild000",
             },
+            paths: { packageManifest: "tests/fixtures/templates" },
             packs: [{ name: "items", type: "Item" }],
         });
         const stats = buildStats(undefined, moduleConfig);
         expect(stats.systemVersion).toBe("0.1.0");
         expect(stats.lastModifiedBy).toBe("thalornabuild000");
-        // Derived from that config's own manifest directory — this repository's,
-        // since the module config points its root here.
+        // Derived from that config's own manifest directory — the fixture here,
+        // since the module config points its root and manifest path at it.
         expect(stats.coreVersion).toBe(MANIFEST.compatibility.minimum);
     });
 });

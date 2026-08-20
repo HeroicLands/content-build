@@ -33,7 +33,13 @@ const buildStats = (systemVersion?: string, config?: unknown): any =>
     buildStatsRaw(systemVersion as any, config as any);
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
-const REPO_ROOT = path.resolve(HERE, "../../..");
+// Two directories inside this package, used only as *different* launch
+// directories. The cwd-independence check below needs somewhere to run from,
+// not any particular repository — it used to reach the host repository root and
+// a `packages/content-build` path beneath it, which only existed while this
+// package was vendored inside the system repository.
+const PKG_ROOT = path.resolve(HERE, "..");
+const PKG_SUBDIR = path.join(PKG_ROOT, "engine");
 const CONFIG_URL = pathToFileURL(path.resolve(HERE, "../config.mjs")).href;
 const HELPERS_URL = pathToFileURL(
     path.resolve(HERE, "../engine/helpers.mjs"),
@@ -203,10 +209,8 @@ describe("path resolution does not depend on the working directory", () => {
             content: path.join(root, "vault/notes"),
             core: "14.377",
         });
-        expect(from(REPO_ROOT)).toBe(expected);
-        expect(from(path.join(REPO_ROOT, "packages/content-build"))).toBe(
-            expected,
-        );
+        expect(from(PKG_ROOT)).toBe(expected);
+        expect(from(PKG_SUBDIR)).toBe(expected);
         expect(from(os.tmpdir())).toBe(expected);
     });
 });

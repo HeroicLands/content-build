@@ -22,8 +22,25 @@ import {
 } from "../engine/compendiums.mjs";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
-const REPO_ROOT = path.resolve(HERE, "../../..");
 const LIBRARY = path.resolve(HERE, "../engine/compendiums.mjs");
+
+/** A note the content walk will find, so the sandbox tree is not empty. */
+const NOTE = `---
+name:
+  full: Sandbox Note
+id: FFFFFFFFFFFFFFFF
+shortcode: sandbox
+type: doc
+package: elsewhere
+sohl:
+  archetype: null
+---
+
+# Overview
+
+A note that exists only so the guard-order test has a tree to compile.
+`;
+
 const LIBRARY_URL = pathToFileURL(LIBRARY).href;
 // The configuration contract and the manifest reader, for the guard-order test
 // below: it induces package-id drift through configuration (#1508), since the
@@ -174,13 +191,16 @@ describe("compilePacks runs the package-id guard before it generates anything", 
             )}\n`,
             "utf8",
         );
-        // A real content tree, so a guard that ran after generation would
-        // genuinely have written packs by the time it threw — which is what
-        // makes the "nothing was written" assertion below mean something.
-        fs.symlinkSync(
-            path.join(REPO_ROOT, "assets/content"),
-            path.join(repo, "assets/content"),
-        );
+        // A content tree with something in it, so a guard that ran after
+        // generation would genuinely have written packs by the time it threw —
+        // which is what makes the "nothing was written" assertion below mean
+        // something. It used to symlink the system repository's real tree,
+        // which resolved only while this package was vendored inside it; once
+        // extracted that symlink dangled and the assertion passed for the wrong
+        // reason. One compilable note is enough to carry the same weight.
+        const contentDir = path.join(repo, "assets/content");
+        fs.mkdirSync(contentDir, { recursive: true });
+        fs.writeFileSync(path.join(contentDir, "note.md"), NOTE, "utf8");
 
         // Every output path is inside the sandbox, so a late guard writes
         // *there* — visible to the assertions, and never into the real build.
