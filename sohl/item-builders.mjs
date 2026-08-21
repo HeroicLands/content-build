@@ -39,6 +39,7 @@
  * compile with (#1563).
  */
 
+import { defaultItemArt } from "./default-item-art.mjs";
 import {
     parseValueDesc,
     requireSubType,
@@ -290,24 +291,53 @@ function buildConcoctionGear(fm) {
 }
 
 /**
- * Every item type SoHL ships, keyed to the builder that produces its `system`
- * block — this repository's answer to "which types compile into an Item",
- * declared as `itemBuilders` and read back through the resolved configuration.
+ * Pair a builder with the default art for its type.
  *
- * @type {Readonly<Record<string, (fm: object) => object>>}
+ * Reading {@link DEFAULT_ITEM_ART} here is what makes the two lists one: the
+ * table below cannot name a type the art map does not cover, because
+ * {@link defaultItemArt} throws and this module evaluates at import. A drift
+ * that a test used to catch is now unrepresentable.
+ *
+ * Importing the art map keeps this module a leaf — it is plain data, not the
+ * resolved configuration, and the cycle the module note above warns about is
+ * only ever closed by reading configuration back out.
+ *
+ * @param {string} type - The item type, and the art map's key.
+ * @param {(fm: object) => object} system - Builder for the type's `system` block.
+ * @returns {{system: (fm: object) => object, img: string}} The registry entry.
+ */
+function withArt(type, system) {
+    return Object.freeze({ system, img: defaultItemArt(type) });
+}
+
+/**
+ * Every item type SoHL ships, keyed to the builder that produces its `system`
+ * block and the default art a note of that type gets when it sets no `img:` —
+ * this repository's answer to "which types compile into an Item", declared as
+ * `itemBuilders` and read back through the resolved configuration.
+ *
+ * **Entries carry their art as of #7.** They used to be bare functions, with
+ * art looked up separately in `default-item-art.mjs`. That left a consumer's
+ * *own* item type able to declare a builder but not a default image, because
+ * the art table is SoHL's and closed to consumers. Pairing them here moves the
+ * art onto the one seam a type is already declared through, and costs this
+ * repository nothing: {@link DEFAULT_ITEM_ART} is still the single map both
+ * this build and `SohlItem.getDefaultArtwork` read (SoHL#932/#1510).
+ *
+ * @type {Readonly<Record<string, {system: (fm: object) => object, img: string}>>}
  */
 export const ITEM_BUILDERS = Object.freeze({
-    affiliation: buildAffiliation,
-    affliction: buildAffliction,
-    armorgear: buildArmorGear,
-    attribute: buildAttribute,
-    concoctiongear: buildConcoctionGear,
-    containergear: buildContainerGear,
-    miscgear: buildMiscGear,
-    mystery: buildMystery,
-    mysticalability: buildMysticalAbility,
-    projectilegear: buildProjectileGear,
-    skill: buildSkill,
-    trauma: buildTrauma,
-    weapongear: buildWeaponGear,
+    affiliation: withArt("affiliation", buildAffiliation),
+    affliction: withArt("affliction", buildAffliction),
+    armorgear: withArt("armorgear", buildArmorGear),
+    attribute: withArt("attribute", buildAttribute),
+    concoctiongear: withArt("concoctiongear", buildConcoctionGear),
+    containergear: withArt("containergear", buildContainerGear),
+    miscgear: withArt("miscgear", buildMiscGear),
+    mystery: withArt("mystery", buildMystery),
+    mysticalability: withArt("mysticalability", buildMysticalAbility),
+    projectilegear: withArt("projectilegear", buildProjectileGear),
+    skill: withArt("skill", buildSkill),
+    trauma: withArt("trauma", buildTrauma),
+    weapongear: withArt("weapongear", buildWeaponGear),
 });

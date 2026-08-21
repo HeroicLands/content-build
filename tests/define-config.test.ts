@@ -314,6 +314,108 @@ describe("defineConfig — the layout a consumer supplies (#1508)", () => {
     });
 });
 
+describe("defineConfig — an item type's default art (#7)", () => {
+    const build = (fm: object) => ({ from: "builder", n: (fm as any)?.n ?? 0 });
+
+    it("accepts a bare builder function, and derives no art from it", () => {
+        // The original spelling, unchanged: a consumer whose notes all carry
+        // `img:` never needs to pair art, and must not be made to.
+        const config = defineConfig({
+            ...minimal(),
+            itemBuilders: { relic: build },
+        });
+
+        expect(config.itemBuilders.relic).toBe(build);
+        expect(config.itemArt).toEqual({});
+        expect([...config.itemTypes]).toEqual(["relic"]);
+    });
+
+    it("accepts a builder paired with art, and splits the two apart", () => {
+        const config = defineConfig({
+            ...minimal(),
+            itemBuilders: {
+                relic: { system: build, img: "icons/relic.svg" },
+            },
+        });
+
+        // `itemBuilders` stays the callable table every caller already reads:
+        // the paired shape is how a consumer *writes* an entry, not a new thing
+        // the compilers have to understand.
+        expect(config.itemBuilders.relic).toBe(build);
+        expect(config.itemArt).toEqual({ relic: "icons/relic.svg" });
+        expect([...config.itemTypes]).toEqual(["relic"]);
+    });
+
+    it("lets the two spellings sit side by side", () => {
+        // Pairing art is per type, not per repository — adding art to one type
+        // must not force it on the rest.
+        const config = defineConfig({
+            ...minimal(),
+            itemBuilders: {
+                relic: { system: build, img: "icons/relic.svg" },
+                charm: build,
+            },
+        });
+
+        expect([...config.itemTypes].sort()).toEqual(["charm", "relic"]);
+        expect(config.itemArt).toEqual({ relic: "icons/relic.svg" });
+    });
+
+    it("derives itemTypes from the keys whichever spelling declared them", () => {
+        // #1504's guarantee has to survive the wider entry: the whitelist is
+        // still the keys, so a type cannot be accepted without a builder.
+        const config = defineConfig({
+            ...minimal(),
+            itemBuilders: { relic: { system: build } },
+        });
+
+        expect([...config.itemTypes]).toEqual(["relic"]);
+        expect(config.itemArt).toEqual({});
+    });
+
+    it("rejects a paired entry with no system builder", () => {
+        expect(() =>
+            defineConfig({
+                ...minimal(),
+                itemBuilders: { relic: { img: "icons/relic.svg" } },
+            } as unknown as ContentBuildConfigInput),
+        ).toThrow(/itemBuilders\.relic\.system/);
+    });
+
+    it("rejects art that is not a non-empty string", () => {
+        for (const img of ["", 7, null]) {
+            expect(() =>
+                defineConfig({
+                    ...minimal(),
+                    itemBuilders: { relic: { system: build, img } },
+                } as unknown as ContentBuildConfigInput),
+            ).toThrow(/itemBuilders\.relic\.img/);
+        }
+    });
+
+    it("rejects a stray key, so a misspelled `image` is not silently ignored", () => {
+        // The failure this guards against is quiet: art that never applies,
+        // and a build that looks fine until a note without `img:` shows up.
+        expect(() =>
+            defineConfig({
+                ...minimal(),
+                itemBuilders: {
+                    relic: { system: build, image: "icons/relic.svg" },
+                },
+            } as unknown as ContentBuildConfigInput),
+        ).toThrow(/itemBuilders\.relic\.image/);
+    });
+
+    it("rejects an entry that is neither a function nor an object", () => {
+        expect(() =>
+            defineConfig({
+                ...minimal(),
+                itemBuilders: { relic: "icons/relic.svg" },
+            } as unknown as ContentBuildConfigInput),
+        ).toThrow(/itemBuilders\.relic/);
+    });
+});
+
 describe("the package barrels", () => {
     it("exposes the engine and sohl namespaces", async () => {
         const pkg = await import("../index.mjs");
