@@ -100,10 +100,16 @@ describe("an ambiguous wikilink fails the compile (#13)", () => {
     it("does not throw for a bare alias that simply resolves nowhere", () => {
         // Unchanged, and deliberately: an unresolved bare alias may be ordinary
         // prose or a worldbuilding placeholder. It warns and renders marked.
-        const warn = vi.spyOn(log, "warn").mockImplementation(() => {});
+        // The warning goes to the console unprefixed, in compiler form (#17).
+        const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
         const result = convertNoteWikilinks("a [[Nowhere At All]] place", from);
         expect(result.markdown).toContain('class="sohl-unresolved-link"');
-        expect(warn).toHaveBeenCalled();
+        expect(warn).toHaveBeenCalledWith(
+            expect.stringContaining(
+                "warning: unresolved wikilink [[Nowhere At All]]",
+            ),
+        );
+        warn.mockRestore();
     });
 
     it("does not throw when nothing is ambiguous", () => {

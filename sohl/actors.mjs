@@ -54,6 +54,7 @@ import {
     withArchetypeFlag,
     md,
 } from "../engine/helpers.mjs";
+import { emitDiagnostic } from "../engine/diagnostics.mjs";
 import { BasePackCompiler } from "../engine/base-compiler.mjs";
 import { contentPackage } from "../engine/content-package.mjs";
 
@@ -187,9 +188,11 @@ function loadItemsMap(itemsSourceDirs) {
             try {
                 doc = JSON.parse(fs.readFileSync(full, "utf8"));
             } catch (err) {
-                log.warn(
-                    `Skipping unparseable item JSON ${full}: ${err.message}`,
-                );
+                emitDiagnostic({
+                    file: full,
+                    severity: "warning",
+                    message: `unparseable item JSON, skipping: ${err.message}`,
+                });
                 continue;
             }
             const shortcode = doc?.system?.shortcode;
@@ -348,7 +351,7 @@ export class Actors extends BasePackCompiler {
         if (shortcode) {
             base = itemsMap.get(`${type}:${shortcode}`);
             if (!base) {
-                log.error(
+                this.noteError(
                     `${ctx}: no predefined item for "${type}:${shortcode}"`,
                 );
                 this.errorCount++;
@@ -358,7 +361,7 @@ export class Actors extends BasePackCompiler {
         } else if (overlay && overlay.name && overlay.system) {
             base = { type, name: overlay.name, system: {} };
         } else {
-            log.error(
+            this.noteError(
                 `${ctx}: embedded item missing shortcode and not enough fields to stand alone`,
             );
             this.errorCount++;
@@ -413,13 +416,15 @@ export class Actors extends BasePackCompiler {
         if (Array.isArray(sohlItems)) {
             sohlItems.forEach((entry, index) => {
                 if (!entry || typeof entry !== "object") {
-                    log.error(`${ctx}: sohl.items[${index}] is not an object`);
+                    this.noteError(
+                        `${ctx}: sohl.items[${index}] is not an object`,
+                    );
                     this.errorCount++;
                     return;
                 }
                 const { shortcode, type, ...rest } = entry;
                 if (!type) {
-                    log.error(`${ctx}: sohl.items[${index}] missing type`);
+                    this.noteError(`${ctx}: sohl.items[${index}] missing type`);
                     this.errorCount++;
                     return;
                 }
@@ -472,7 +477,7 @@ export class Actors extends BasePackCompiler {
             system.currentMoveMedium = bodyData.currentMoveMedium;
             system.movementProfiles = bodyData.movementProfiles;
         } else if (bodyField != null) {
-            log.error(
+            this.noteError(
                 `${ctx}: sohl.body must be an inline object (structure/weight/…), got ${typeof bodyField}`,
             );
             this.errorCount++;
