@@ -93,9 +93,19 @@ export function formatDiagnostic({ file, line, column, severity, message }) {
 /**
  * Prints one diagnostic on the console, unprefixed.
  *
- * Warnings go to stdout and errors to stderr, matching every other compiler —
- * and matching `loglevel`'s own routing, which this deliberately sidesteps for
- * the reason given in the module docs.
+ * **Both severities go to stderr**, which is what keeps findings clear of the
+ * progress and summary prose a build writes to stdout. That is Node's doing,
+ * not a choice made here: `console.warn` is an alias for `console.error` and
+ * writes to `process.stderr`, so the two branches below differ only in which
+ * severity word the line carries, never in the stream.
+ *
+ * Saying otherwise has already cost something — an earlier version of this
+ * comment claimed warnings went to stdout, and a consumer wrote a whole
+ * local wrapper to obtain the stderr routing it already had. Anything relying
+ * on the separation should split on the `severity` field, not on the stream.
+ *
+ * This deliberately sidesteps `loglevel`, for the reason given in the module
+ * docs.
  *
  * @param {object} d - As {@link formatDiagnostic}.
  * @returns {void}
