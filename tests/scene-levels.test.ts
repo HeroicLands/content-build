@@ -9,7 +9,10 @@ import { describe, it, expect } from "vitest";
 
 // Build-time pack integrity check (plain ESM, no Foundry). Imported by relative
 // path because the pack-build scripts live outside the `@src` alias tree.
-import { checkSceneLevels } from "../engine/scene-levels.mjs";
+import {
+    checkSceneLevels,
+    compendiumCliVersion,
+} from "../engine/scene-levels.mjs";
 
 /** A well-formed scene record and the sublevel record its `levels` names. */
 function goodPack(): Array<[string, Record<string, unknown>]> {
@@ -137,5 +140,173 @@ describe("checkSceneLevels", () => {
             expect(problems).toHaveLength(1);
             expect(problems[0]).toContain("initialLevel");
         });
+    });
+});
+
+// #9: the guard built the key it reported by interpolating each `levels` entry,
+// so an entry that is an inline Level *object* — what
+// `@foundryvtt/foundryvtt-cli` before 3.0.3 writes, because it does not split
+// Scene Levels into the sublevel — degraded to "[object Object]" and named a
+// key that could not exist. The guard is right to fail; only the message was.
+describe("checkSceneLevels diagnostics", () => {
+    /** A second, sound scene, so a pack is not wholly without Level records. */
+    function otherScene(): Array<[string, Record<string, unknown>]> {
+        return [
+            [
+                "!scenes!BBBBBBBBBBBBBBBB",
+                {
+                    _id: "BBBBBBBBBBBBBBBB",
+                    name: "Wayside",
+                    initialLevel: "otherLevel000000",
+                    levels: ["otherLevel000000"],
+                },
+            ],
+            [
+                "!scenes.levels!BBBBBBBBBBBBBBBB.otherLevel000000",
+                { _id: "otherLevel000000", name: "Ground" },
+            ],
+        ];
+    }
+
+    /** A scene declaring the given `levels`, with no record of its own. */
+    function sceneDeclaring(
+        id: string,
+        name: string,
+        levels: unknown,
+    ): [string, Record<string, unknown>] {
+        return [
+            `!scenes!${id}`,
+            { _id: id, name, initialLevel: "defaultLevel0000", levels },
+        ];
+    }
+
+    const inlineLevel = {
+        _id: "defaultLevel0000",
+        name: "Ground",
+        background: { src: "a.jpg" },
+    };
+
+    it("names an inline Level object by shape and `_id`, never as [object Object]", () => {
+        const problems = checkSceneLevels([
+            ...otherScene(),
+            sceneDeclaring("AAAAAAAAAAAAAAAA", "Hearthmoor", [inlineLevel]),
+        ]);
+        expect(problems).toHaveLength(1);
+        expect(problems[0]).not.toContain("[object Object]");
+        expect(problems[0]).toContain("Hearthmoor");
+        expect(problems[0]).toContain("levels[0]");
+        expect(problems[0]).toContain("inline Level object");
+        expect(problems[0]).toContain("defaultLevel0000");
+        expect(problems[0]).toContain("foundryvtt-cli");
+    });
+
+    it("reports an inline Level object that carries no `_id`", () => {
+        const problems = checkSceneLevels([
+            ...otherScene(),
+            sceneDeclaring("AAAAAAAAAAAAAAAA", "Hearthmoor", [
+                { name: "Ground" },
+            ]),
+        ]);
+        expect(problems).toHaveLength(1);
+        expect(problems[0]).not.toContain("[object Object]");
+        expect(problems[0]).toContain("absent");
+    });
+
+    it("reports a `levels` entry that is neither an id nor a Level object", () => {
+        const problems = checkSceneLevels([
+            ...otherScene(),
+            sceneDeclaring("AAAAAAAAAAAAAAAA", "Hearthmoor", [null]),
+        ]);
+        expect(problems).toHaveLength(1);
+        expect(problems[0]).toContain("Hearthmoor");
+        expect(problems[0]).toContain("levels[0]");
+        expect(problems[0]).toContain("not a Level id");
+    });
+
+    // The wholesale case: no scene in the pack has a Level record. That is one
+    // fact about the compile, not N facts about N scenes, so it is reported
+    // once — with every affected scene named.
+    it("reports a pack with zero level records once, naming every scene", () => {
+        const problems = checkSceneLevels([
+            sceneDeclaring("AAAAAAAAAAAAAAAA", "Hearthmoor", [inlineLevel]),
+            sceneDeclaring("CCCCCCCCCCCCCCCC", "Wayside", [inlineLevel]),
+            sceneDeclaring("DDDDDDDDDDDDDDDD", "Kaldor Keep", [inlineLevel]),
+        ]);
+        expect(problems).toHaveLength(1);
+        expect(problems[0]).not.toContain("[object Object]");
+        expect(problems[0]).toContain("Hearthmoor");
+        expect(problems[0]).toContain("Wayside");
+        expect(problems[0]).toContain("Kaldor Keep");
+        expect(problems[0]).toContain("3.0.3");
+        expect(problems[0]).toContain("inline");
+    });
+
+    // The installed CLI *is* the write path, so naming it turns the report
+    // into an instruction. Each verdict it can reach is a different one.
+    it("blames a resolved CLI older than 3.0.3 and says what to install", () => {
+        const problems = checkSceneLevels(
+            [sceneDeclaring("AAAAAAAAAAAAAAAA", "Hearthmoor", [inlineLevel])],
+            { cliVersion: "1.1.0" },
+        );
+        expect(problems[0]).toContain("1.1.0");
+        expect(problems[0]).toContain("predates 3.0.3");
+    });
+
+    it("points at a second copy when the resolved CLI is new enough", () => {
+        const problems = checkSceneLevels(
+            [sceneDeclaring("AAAAAAAAAAAAAAAA", "Hearthmoor", [inlineLevel])],
+            { cliVersion: "3.0.4" },
+        );
+        expect(problems[0]).toContain("3.0.4");
+        expect(problems[0]).toContain("second, older copy");
+    });
+
+    it("asks for the installed version when none could be resolved", () => {
+        const problems = checkSceneLevels([
+            sceneDeclaring("AAAAAAAAAAAAAAAA", "Hearthmoor", [inlineLevel]),
+        ]);
+        expect(problems[0]).toContain("npm ls @foundryvtt/foundryvtt-cli");
+    });
+
+    it("does not judge a version it cannot parse", () => {
+        const problems = checkSceneLevels(
+            [sceneDeclaring("AAAAAAAAAAAAAAAA", "Hearthmoor", [inlineLevel])],
+            { cliVersion: "next" },
+        );
+        expect(problems[0]).toContain("npm ls @foundryvtt/foundryvtt-cli");
+        expect(problems[0]).not.toContain("predates");
+    });
+
+    // With ids rather than objects the sublevel was written and then lost, so
+    // the message must not blame the toolchain's shape — but a whole missing
+    // sublevel is still one fact, and still reported once.
+    it("reports the wholesale case for id entries without blaming inline shape", () => {
+        const problems = checkSceneLevels([
+            sceneDeclaring("AAAAAAAAAAAAAAAA", "Hearthmoor", [
+                "defaultLevel0000",
+            ]),
+            sceneDeclaring("CCCCCCCCCCCCCCCC", "Wayside", ["defaultLevel0000"]),
+        ]);
+        expect(problems).toHaveLength(1);
+        expect(problems[0]).toContain("Hearthmoor");
+        expect(problems[0]).toContain("Wayside");
+        expect(problems[0]).not.toContain("inline");
+    });
+
+    // A scene that declares nothing has its own defect, and the wholesale
+    // report says nothing about it — so it is still reported separately.
+    it("still reports a scene that declares no levels alongside the wholesale report", () => {
+        const problems = checkSceneLevels([
+            sceneDeclaring("AAAAAAAAAAAAAAAA", "Hearthmoor", [inlineLevel]),
+            sceneDeclaring("CCCCCCCCCCCCCCCC", "Wayside", []),
+        ]);
+        expect(problems).toHaveLength(2);
+        expect(problems.some((p) => p.includes("no Level"))).toBe(true);
+    });
+});
+
+describe("compendiumCliVersion", () => {
+    it("reads the version of the CLI this build resolves", () => {
+        expect(compendiumCliVersion()).toMatch(/^\d+\.\d+\.\d+/);
     });
 });
