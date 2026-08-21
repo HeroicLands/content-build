@@ -14,6 +14,7 @@ import {
     formatDiagnostic,
     emitDiagnostic,
     positionInBody,
+    positionInFrontmatter,
 } from "../engine/diagnostics.mjs";
 
 describe("formatDiagnostic — the compiler-style locator", () => {
@@ -409,5 +410,68 @@ describe("an unresolved wikilink names the file, line and column", () => {
         for (const line of warned) {
             expect(line).toMatch(/^[^\s]*Capital\.md:\d+:\d+: warning: /);
         }
+    });
+});
+
+describe("positionInFrontmatter — where a key is declared", () => {
+    const raw = [
+        "---",
+        "name:",
+        "  full: Aconite",
+        "type: affliction",
+        "shortcode: aconite",
+        "aliases:",
+        "  - affliction-aconite",
+        "  - Wolfsbane",
+        "---",
+        "",
+        "Body prose that also mentions type: here.",
+        "",
+    ].join("\n");
+
+    it("locates a top-level key, counting the opening fence", () => {
+        // File line 1 is `---`, so the block's first line is file line 2.
+        expect(positionInFrontmatter(raw, "shortcode")).toEqual({
+            line: 5,
+            column: 1,
+        });
+    });
+
+    // A bare search would match the first occurrence anywhere in the file,
+    // which for a key like `type` is routinely a line of prose.
+    it("does not escape into the body", () => {
+        expect(positionInFrontmatter(raw, "type")).toEqual({
+            line: 4,
+            column: 1,
+        });
+    });
+
+    it("locates a list entry when one is named", () => {
+        expect(positionInFrontmatter(raw, "aliases", "Wolfsbane")).toEqual({
+            line: 8,
+            column: 5,
+        });
+    });
+
+    it("drops the position rather than guessing it", () => {
+        expect(positionInFrontmatter(raw, "nosuchkey")).toEqual({});
+        expect(positionInFrontmatter("no frontmatter here", "type")).toEqual(
+            {},
+        );
+        expect(positionInFrontmatter(undefined as never, "type")).toEqual({});
+    });
+
+    it("is not fooled by a key that is a prefix of another", () => {
+        const doc = [
+            "---",
+            "shortcodeExtra: x",
+            "shortcode: y",
+            "---",
+            "",
+        ].join("\n");
+        expect(positionInFrontmatter(doc, "shortcode")).toEqual({
+            line: 3,
+            column: 1,
+        });
     });
 });

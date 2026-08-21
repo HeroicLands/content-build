@@ -263,6 +263,34 @@ that same map, so there is still exactly one map — and the drift a test used t
 watch for is now unrepresentable, because building the registry throws if a type
 has no art.
 
+## Linting a content tree
+
+```bash
+npx content-build lint            # the configured `paths.content`
+npx content-build lint some/tree  # or a tree named outright
+```
+
+Checks the three rules every note's **identity** is authored against, and
+reports each finding in the located form below:
+
+- **Shape** — a `shortcode` is strictly ASCII-alphanumeric. It is the identity
+  key referenced from saved world data, and half of the `type-shortcode`
+  address, whose parse needs the separating hyphen to be the only hyphen.
+- **Uniqueness** — `(type, shortcode)` names one note. A document is addressed
+  across _every_ pack of its document type, so routing two same-address notes to
+  different packs with `pack:` does not separate them.
+- **Alias** — the note physically carries its own `type-shortcode` address in
+  `aliases`, and carries exactly one address-shaped alias. Obsidian resolves a
+  wikilink against the files on disk, so without the alias the address form
+  resolves in the build and is dead in the editor.
+
+It compiles nothing, opens no LevelDB and needs no Foundry manifest, so it runs
+in about a second and can gate a commit. An empty or untyped tree **fails**
+rather than passing: "every one of nothing is unique" is a vacuous pass, and it
+is exactly what a tree that failed to check out produces.
+
+Nothing here writes. A check reports and an author fixes.
+
 ## Diagnostics
 
 Every warning or error a build reports **about a content note** is emitted in the

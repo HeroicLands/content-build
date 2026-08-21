@@ -66,6 +66,9 @@ export * as contentAddress from "./content-address.mjs";
 /** The cross-package link manifest: reader, writer, and canonical keys. */
 export * as kbManifest from "./kb-manifest.mjs";
 
+/** Address rules every content tree is linted against: shape, uniqueness, alias. */
+export * as contentLint from "./content-lint.mjs";
+
 /** Dataview-style content tables, expanded into markdown at compile time. */
 export * as contentTables from "./content-tables.mjs";
 
