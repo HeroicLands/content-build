@@ -286,6 +286,10 @@ export function buildWikilinkIndex(docs, packageId, foreign, contentPackage) {
 
     const byShortcode = new Map();
     const byAlias = new Map();
+    // key -> every note claiming it. `byAlias` records only the *verdict*
+    // (a note, or `null` for poisoned); this records the claimants, which is
+    // what an ambiguity report has to name.
+    const aliasClaims = new Map();
     const types = new Set();
 
     // Each note's address is computed once, here, and every reference to it is
@@ -323,6 +327,14 @@ export function buildWikilinkIndex(docs, packageId, foreign, contentPackage) {
                 key,
                 byAlias.has(key) && byAlias.get(key) !== d ? null : d,
             );
+            // Every claimant is kept alongside, because poisoning the alias
+            // discards exactly the information needed to report the problem.
+            // The note that *cites* an ambiguous alias is innocent — whoever
+            // added the second claimant broke it — so a message that can only
+            // name the citing note points at the wrong file (#13).
+            const claims = aliasClaims.get(key);
+            if (!claims) aliasClaims.set(key, [d]);
+            else if (!claims.includes(d)) claims.push(d);
         }
     }
     // Entries published by *other* packages, keyed canonically. Merged as one
@@ -369,6 +381,7 @@ export function buildWikilinkIndex(docs, packageId, foreign, contentPackage) {
     return {
         byShortcode,
         byAlias,
+        aliasClaims,
         types,
         uuidByDoc,
         packageId,
@@ -523,9 +536,23 @@ export function convertWikilinks(markdown, { type, id, pack, docPack, index }) {
                     `${qualified.type}/${qualified.shortcode}`,
                 );
             } else {
-                const hit = index.byAlias.get(`${norm(type)}|${norm(target)}`);
+                const aliasKey = `${norm(type)}|${norm(target)}`;
+                const hit = index.byAlias.get(aliasKey);
                 if (hit === null) {
-                    unresolved.push({ link: all, target, reason: "ambiguous" });
+                    unresolved.push({
+                        link: all,
+                        target,
+                        reason: "ambiguous",
+                        // Who claimed it, so the report can name the collision
+                        // rather than the note that merely cites it (#13).
+                        candidates: (
+                            index.aliasClaims?.get(aliasKey) ?? []
+                        ).map((d) => ({
+                            type: d.type,
+                            shortcode: d.shortcode,
+                            name: d.name,
+                        })),
+                    });
                     return unresolvedLink(text || target, target);
                 }
                 doc = hit;

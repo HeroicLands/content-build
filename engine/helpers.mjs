@@ -477,6 +477,27 @@ export function convertNoteWikilinks(
         index,
     });
     for (const u of result.unresolved) {
+        // An ambiguous alias matched real content — twice. There is no
+        // defensible way to pick one, and the correction is mechanical: write
+        // the qualified form. So it fails rather than warning, which also puts
+        // the failure in front of whoever created the collision instead of
+        // leaving it in a log line attributed to an innocent citing note.
+        // The knowledgebase build has always treated this as fatal; agreeing
+        // means one authored note cannot get two verdicts (#13).
+        if (u.reason === "ambiguous") {
+            const claims = u.candidates ?? [];
+            const named =
+                claims.length ?
+                    claims
+                        .map((c) => `"${c.name}" (${c.type}-${c.shortcode})`)
+                        .join(" and ")
+                :   "two or more notes";
+            throw new Error(
+                `Ambiguous wikilink in "${name}": ${u.link} — claimed by ` +
+                    `${named}. Rename one alias, or address the intended one ` +
+                    `as [[type-shortcode|Text]].`,
+            );
+        }
         // A qualified address resolving nowhere is a typo, now that every
         // linkable package is either built here or vendored (#1499) — so it
         // fails the note rather than degrading to text. A bare alias stays a
