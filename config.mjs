@@ -246,10 +246,15 @@ export const PACK_DOCUMENT_TYPES = /** @type {const} */ ([
  * One entry of a consumer's `itemBuilders` registry.
  *
  * Either a bare builder function, or that builder paired with the type's
- * default art. See {@link normalizeItemBuilders} for why the paired form
- * exists.
+ * default art and the frontmatter fields it declares. See
+ * {@link normalizeItemBuilders} for why the paired form exists.
  *
- * @typedef {((fm: object) => object)|{system: (fm: object) => object, img?: string}} ItemBuilderEntry
+ * `fields` is what makes the type documentable: a builder function says
+ * nothing about the vocabulary it consumes, so a consumer that declares its
+ * fields can generate its own authoring reference and check its own notes,
+ * while one that does not is simply undocumented rather than broken (#22).
+ *
+ * @typedef {((fm: object) => object)|{system: (fm: object) => object, img?: string, fields?: readonly object[]}} ItemBuilderEntry
  */
 
 /**
@@ -310,6 +315,11 @@ export const PACK_DOCUMENT_TYPES = /** @type {const} */ ([
  *                                     of each entry that paired one. Sparse — a
  *                                     type absent here has no default, and a note
  *                                     of it must carry `img:` (#7).
+ * @property {Readonly<Record<string, readonly object[]>>} itemFields  Derived:
+ *                                     the frontmatter fields each entry
+ *                                     declared. Sparse, like `itemArt` — a type
+ *                                     absent here compiles normally and is
+ *                                     simply undocumented (#22).
  * @property {ReadonlySet<string>} itemTypes       Derived: the keys of
  *                                     {@link ContentBuildConfigInput.itemBuilders},
  *                                     so the accepted item types and the builder
@@ -341,7 +351,7 @@ const CONFIG_KEYS = [
     "assets",
     "publish",
 ];
-const ITEM_BUILDER_KEYS = ["system", "img"];
+const ITEM_BUILDER_KEYS = ["system", "img", "fields"];
 const PACK_KEYS = [
     "name",
     "type",
@@ -609,6 +619,8 @@ function normalizeItemBuilders(value) {
     const itemBuilders = {};
     /** @type {Record<string, string>} */
     const itemArt = {};
+    /** @type {Record<string, readonly object[]>} */
+    const itemFields = {};
 
     for (const [type, entry] of Object.entries(input)) {
         if (typeof entry === "function") {
@@ -633,11 +645,30 @@ function normalizeItemBuilders(value) {
                 `itemBuilders.${type}.img`,
             );
         }
+        if (paired.fields !== undefined) {
+            if (!Array.isArray(paired.fields)) {
+                fail(`itemBuilders.${type}.fields`, "must be an array");
+            }
+            for (const [index, field] of paired.fields.entries()) {
+                if (!isPlainObject(field)) {
+                    fail(
+                        `itemBuilders.${type}.fields[${index}]`,
+                        "must be a field declaration object",
+                    );
+                }
+                requireNonEmptyString(
+                    /** @type {Record<string, unknown>} */ (field).to,
+                    `itemBuilders.${type}.fields[${index}].to`,
+                );
+            }
+            itemFields[type] = Object.freeze([...paired.fields]);
+        }
     }
 
     return {
         itemBuilders: Object.freeze(itemBuilders),
         itemArt: Object.freeze(itemArt),
+        itemFields: Object.freeze(itemFields),
     };
 }
 
@@ -787,7 +818,9 @@ export function defineConfig(config) {
         "foundryPackage",
     );
 
-    const { itemBuilders, itemArt } = normalizeItemBuilders(input.itemBuilders);
+    const { itemBuilders, itemArt, itemFields } = normalizeItemBuilders(
+        input.itemBuilders,
+    );
     const itemTypes = Object.freeze(new Set(Object.keys(itemBuilders)));
 
     return Object.freeze({
@@ -805,6 +838,7 @@ export function defineConfig(config) {
         stats: normalizeStats(input.stats),
         itemBuilders,
         itemArt,
+        itemFields,
         // Resolved once, here, and read everywhere through
         // `loadPackConfig()`. The doc-entry *concept* is the engine's —
         // a note that carries documentation is not a SoHL idea — but the

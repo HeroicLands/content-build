@@ -37,14 +37,16 @@
  *   npx content-build package compile [pack]
  *   npx content-build package unpack [pack] [entry]
  *   npx content-build package clean [pack] [entry]
+ *   npx content-build docs item-fields [--out <path>] [--title <title>]
  *
- * In the SoHL repository, which consumes the package by workspace path:
+ * In a consuming repository, wrapped as npm scripts — SoHL spells them:
  *   npm run build:compiledb                // → … package compile (all packs)
  *   npm run build:unpackdb                 // → … package unpack
- *   node ./packages/content-build/bin/content-build.mjs package compile [pack]
+ *   npm run docs:item-fields               // → … docs item-fields --out …
  */
 
 import fs from "fs";
+import path from "node:path";
 import log from "loglevel";
 import prefix from "loglevel-plugin-prefix";
 import yargs from "yargs";
@@ -56,6 +58,7 @@ import {
 } from "../engine/compendiums.mjs";
 import { loadPackConfig } from "../engine/pack-config.mjs";
 import { readPackageManifest } from "../engine/package-manifest.mjs";
+import { renderItemFieldReference } from "../engine/field-reference.mjs";
 
 /**
  * The packs the shipped Foundry package declares — what `unpack` extracts.
@@ -105,9 +108,62 @@ prefix.apply(log, {
 
 const argv = yargs(hideBin(process.argv))
     .command(packageCommand())
+    .command(docsCommand())
     .version(ownVersion())
     .help()
     .alias("help", "h").argv;
+
+/**
+ * `docs item-fields` — render this repository's item-frontmatter reference.
+ *
+ * The page is generated from the `fields` each `itemBuilders` entry declares,
+ * so every consuming repository documents *its own* registry with the same
+ * command (#22). Written to `--out` when given, otherwise to stdout, which is
+ * what lets a consumer's `--check` guard diff it without a temporary file.
+ *
+ * @returns {object} The yargs command module.
+ */
+// eslint-disable-next-line
+function docsCommand() {
+    return {
+        command: "docs [action]",
+        describe: "Generate documentation from the configured registries",
+        builder: (yargs) => {
+            yargs.positional("action", {
+                describe: "The document to render.",
+                type: "string",
+                choices: ["item-fields"],
+            });
+            yargs.option("out", {
+                describe: "Write to this file instead of stdout.",
+                type: "string",
+            });
+            yargs.option("title", {
+                describe: "The page's H1.",
+                type: "string",
+            });
+        },
+        handler: (argv) => {
+            try {
+                const { out, title } = argv;
+                const md = renderItemFieldReference({
+                    ...(title ? { title } : {}),
+                    generatedBy: "`content-build docs item-fields`",
+                });
+                if (out) {
+                    fs.mkdirSync(path.dirname(out), { recursive: true });
+                    fs.writeFileSync(out, `${md}\n`);
+                    log.info(`Wrote ${out}`);
+                } else {
+                    process.stdout.write(`${md}\n`);
+                }
+            } catch (err) {
+                log.error(err.message);
+                process.exitCode = 1;
+            }
+        },
+    };
+}
 
 // eslint-disable-next-line
 function packageCommand() {
