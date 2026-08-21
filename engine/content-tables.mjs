@@ -1131,7 +1131,11 @@ export function renderContentTable(spec, rows, linkable, self) {
  * @param {ContentTableDoc} [ctx.self] - The note being expanded, as a searchable
  *   doc: what a query's `this` reads.
  * @returns {{markdown: string, errors: Array<{source: string, directive: string,
- *   reason: string}>}}
+ *   reason: string, line: number}>, lineMap: Array<{line: number,
+ *   generated: boolean}>}} `lineMap` is parallel to the emitted lines and says
+ *   which authored line each came from, so a diagnostic about the expanded
+ *   body can name an authored position (#17). An `errors` entry carries the
+ *   0-based line of the directive that failed, for the same reason.
  */
 export function expandContentTables(
     markdown,
@@ -1140,10 +1144,28 @@ export function expandContentTables(
     const errors = [];
     const lines = String(markdown ?? "").split("\n");
     const out = [];
+    // Which authored line each emitted line came from, so a later pass can
+    // report an authored position for text this one moved (#17). A generated
+    // row has no authored line of its own, so it is blamed on the directive
+    // that produced it — the thing an author can actually edit — and marked,
+    // because its columns mean nothing.
+    const lineMap = [];
+    /**
+     * Emits one line, recording where it came from.
+     *
+     * @param {string} text - The line.
+     * @param {number} line - 0-based authored line to attribute it to.
+     * @param {boolean} [generated] - Whether this build wrote it.
+     * @returns {void}
+     */
+    const emit = (text, line, generated = false) => {
+        out.push(text);
+        lineMap.push({ line, generated });
+    };
     for (let i = 0; i < lines.length; i++) {
         const opening = FENCE_LINE.exec(lines[i]);
         if (!opening) {
-            out.push(lines[i]);
+            emit(lines[i], i);
             continue;
         }
         const [, indent, marker, info] = opening;
@@ -1157,7 +1179,7 @@ export function expandContentTables(
         const isQuery = /^dataview\b/i.test(info.trim());
         const block = lines.slice(i, Math.min(close + 1, lines.length));
         if (!isQuery || close >= lines.length) {
-            out.push(...block);
+            block.forEach((text, k) => emit(text, i + k));
             i = close;
             continue;
         }
@@ -1172,19 +1194,23 @@ export function expandContentTables(
                 source,
                 directive: block.join("\n"),
                 reason: err.message,
+                // The fence's own line, so a table error is as locatable as
+                // everything else the build reports (#17).
+                line: i,
             });
-            out.push(...block);
+            block.forEach((text, k) => emit(text, i + k));
             i = close;
             continue;
         }
         // A markdown table must be its own block: keep one blank line on each
         // side of it, without inventing a leading or trailing one.
-        if (out.length > 0 && out[out.length - 1].trim() !== "") out.push("");
-        out.push(...table.split("\n").map((row) => `${indent}${row}`));
+        if (out.length > 0 && out[out.length - 1].trim() !== "")
+            emit("", i, true);
+        for (const row of table.split("\n")) emit(`${indent}${row}`, i, true);
         if (close + 1 < lines.length && lines[close + 1].trim() !== "") {
-            out.push("");
+            emit("", i, true);
         }
         i = close;
     }
-    return { markdown: out.join("\n"), errors };
+    return { markdown: out.join("\n"), errors, lineMap };
 }

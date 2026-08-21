@@ -427,7 +427,11 @@ export class Scenes extends BasePackCompiler {
             ...this.#resolvers(this.index, this.effectsByAddress, fm.shortcode),
         });
         for (const message of warnings) {
-            log.warn(`Map "${name}": ${message}`);
+            // Named by file, like every other note diagnostic (#17). A map
+            // warning is about the note's frontmatter, which carries no
+            // offset, so it names the file and stops there rather than
+            // pointing at a line it cannot establish.
+            this.noteWarn(`map "${name}": ${message}`);
         }
         this.writeEntry(scene);
 

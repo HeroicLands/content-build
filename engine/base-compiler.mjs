@@ -72,6 +72,7 @@ import {
     collectContentDocs,
     expandNoteTables,
 } from "./helpers.mjs";
+import { emitDiagnostic } from "./diagnostics.mjs";
 import { contentPackage } from "./content-package.mjs";
 import { assertTypeNotRetired, packForType } from "./ids.mjs";
 
@@ -321,15 +322,23 @@ export class BasePackCompiler {
     convertBody(fm, body) {
         if (!this.constructor.convertsWikilinks) return body;
         const name = resolveName(fm);
-        const tabulated = expandNoteTables(body, {
+        const { absPath, bodyLine, bodyColumn } = this.currentNote ?? {};
+        const { markdown: tabulated, lineMap } = expandNoteTables(body, {
             docs: this.contentDocs,
             name,
             pkg: fm.package,
             fm,
+            bodyLine,
         });
         const { markdown, unresolved } = convertNoteWikilinks(tabulated, {
             type: fm.type,
             id: fm.id,
+            // Where this note is, so a link that resolves nowhere is reported
+            // at a position an author can open rather than by note name (#17).
+            file: absPath,
+            bodyLine,
+            bodyColumn,
+            lineMap,
             // A `[[#slug]]` self-link addresses the source note, which has no
             // entry in the index — so where its own documents landed has to
             // travel with it (#1566).
@@ -340,6 +349,44 @@ export class BasePackCompiler {
         });
         this.unresolvedLinks += unresolved.length;
         return markdown;
+    }
+
+    /**
+     * Reports a warning about the note being compiled.
+     *
+     * The file comes from the walk, so no caller has to carry it; a `position`
+     * is used when the caller could establish one and omitted otherwise —
+     * naming the file alone beats naming a line that is not the problem.
+     *
+     * @param {string} message - What is wrong, in one sentence.
+     * @param {{line?: number, column?: number}} [position] - Where, if known.
+     * @returns {void}
+     */
+    noteWarn(message, position) {
+        emitDiagnostic({
+            file: this.currentNote?.absPath,
+            line: position?.line,
+            column: position?.column,
+            severity: "warning",
+            message,
+        });
+    }
+
+    /**
+     * Reports an error about the note being compiled.
+     *
+     * @param {string} message - What is wrong, in one sentence.
+     * @param {{line?: number, column?: number}} [position] - Where, if known.
+     * @returns {void}
+     */
+    noteError(message, position) {
+        emitDiagnostic({
+            file: this.currentNote?.absPath,
+            line: position?.line,
+            column: position?.column,
+            severity: "error",
+            message,
+        });
     }
 
     /**
@@ -477,9 +524,16 @@ export class BasePackCompiler {
         const label = this.constructor.label;
         const Label = label.charAt(0).toUpperCase() + label.slice(1);
 
-        for (const { frontmatter: fm, body, absPath } of walkMarkdownTree(
-            this.contentBase,
-        )) {
+        for (const {
+            frontmatter: fm,
+            body,
+            absPath,
+            bodyLine,
+            bodyColumn,
+        } of walkMarkdownTree(this.contentBase)) {
+            // Which note this pass is on, so anything it calls can report a
+            // position without every method having to be handed one (#17).
+            this.currentNote = { absPath, bodyLine, bodyColumn };
             if (!fm || fm.package !== contentPackage()) {
                 stats.skippedOther++;
                 continue;
@@ -504,7 +558,7 @@ export class BasePackCompiler {
                     throw new Error(`${Label} missing id: ${absPath}`);
                 }
                 stats.skippedNoId++;
-                log.warn(`${Label} note missing id, skipping: ${absPath}`);
+                this.noteWarn(`${label} note has no id, skipping`);
                 continue;
             }
             // Which pack of this type takes it. Applied after the draft and
@@ -519,7 +573,7 @@ export class BasePackCompiler {
             } catch (err) {
                 if (this.routingReporter) {
                     this.errorCount++;
-                    log.error(`${absPath}: ${err.message}`);
+                    this.noteError(err.message, err.position);
                 }
                 continue;
             }
@@ -537,8 +591,12 @@ export class BasePackCompiler {
                 this.onCompiled(fm, doc);
             } catch (err) {
                 this.errorCount++;
-                log.error(
-                    `Failed to compile ${this.noteLabel(fm)} at ${absPath}: ${err.message}`,
+                // `position` is set by whatever failed if it knew where — an
+                // unresolved address, a bad table directive — so the report
+                // points at the line rather than at the note (#17).
+                this.noteError(
+                    `${this.noteLabel(fm)} failed to compile: ${err.message}`,
+                    err.position,
                 );
             }
         }

@@ -263,6 +263,41 @@ that same map, so there is still exactly one map — and the drift a test used t
 watch for is now unrepresentable, because building the registry throws if a type
 has no art.
 
+## Diagnostics
+
+Every warning or error a build reports **about a content note** is emitted in the
+form every C-family compiler, `tsc` and ESLint already use, so an editor, a CI
+annotator or a `grep` parses it with no knowledge of this build:
+
+```text
+assets/content/Regions/Capital_Nome.md:43:635: warning: unresolved wikilink [[Kenbet_Pat|Kenbet'Pat]] (unknown) in "The Capital Nome"
+```
+
+`file:line:column: severity: message`. The path is relative to the working
+directory — during a build, the consuming repository's root.
+
+Two rules keep it that way, both in `engine/diagnostics.mjs`:
+
+- **The locator starts the line.** Diagnostics deliberately bypass `loglevel`,
+  whose `[timestamp] [WARN]:` prefix sits exactly where a parser reads the path
+  from; a greedy path pattern swallows the prefix and yields a filename nothing
+  can open. Progress and summary lines still go through `loglevel` — they are
+  not about a file and nothing needs to parse them.
+- **A field is dropped, never guessed.** A diagnostic reports the position it
+  can establish honestly and no more: `file:line: …` when the column is
+  meaningless, `file: …` when only the note is known. Nothing defaults to
+  `1:1`, which would send a reader to the frontmatter every time.
+
+Establishing a position at all takes three corrections, applied only where they
+hold — see `positionInBody`. A body offset is not a file line until the
+frontmatter's lines are added (`bodyLine`); the trim that strips the body can
+take indentation off its first line (`bodyColumn`); and a body is scanned
+_after_ its content tables expand, so an offset may land in text nobody
+authored. `expandContentTables` therefore returns a `lineMap` saying which
+authored line each emitted line came from — a generated row is blamed on the
+directive that produced it and reports **no column**, because there is no
+authored character to point at.
+
 ## Layout
 
 - **`@heroiclands/content-build/engine`** — package-agnostic machinery: the

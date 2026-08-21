@@ -376,9 +376,10 @@ describe("generatePacksJson — a note that routes nowhere", () => {
 
     it("reports the unroutable note exactly once, not once per pack", async () => {
         const messages: string[] = [];
-        const original = log.error;
-        (log as any).error = (...args: unknown[]) =>
-            messages.push(args.join(" "));
+        // A note diagnostic goes to the console unprefixed, in compiler form,
+        // so it names the file it is about (#17).
+        const original = console.error;
+        console.error = (...args: unknown[]) => messages.push(args.join(" "));
         try {
             const root = repo({
                 "Climbing.md": skillNote(
@@ -406,10 +407,11 @@ describe("generatePacksJson — a note that routes nowhere", () => {
                 }),
             });
         } finally {
-            (log as any).error = original;
+            console.error = original;
         }
-        expect(messages.filter((m) => m.includes("nosuchpack"))).toHaveLength(
-            1,
-        );
+        const reported = messages.filter((m) => m.includes("nosuchpack"));
+        expect(reported).toHaveLength(1);
+        // And it says which note, by path — the whole point of the report.
+        expect(reported[0]).toMatch(/^[^\s]*Lost\.md: error: /);
     });
 });

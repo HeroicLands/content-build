@@ -40,6 +40,7 @@ import { readPackageManifest } from "./package-manifest.mjs";
 import { loadForeignManifests, PACKAGE_BASE } from "./kb-manifest.mjs";
 import { buildWikilinkIndex, convertWikilinks } from "./wikilinks.mjs";
 import { expandContentTables } from "./content-tables.mjs";
+import { emitDiagnostic, positionInBody } from "./diagnostics.mjs";
 // The pure `sohl:` frontmatter readers live in a leaf module so the item-type
 // registry can import them without reaching back through this one (#1504).
 // Re-exported here so every existing importer keeps its single import path.
@@ -58,10 +59,15 @@ export const md = markdownit({ html: true });
 
 /**
  * Parses a markdown file with YAML frontmatter.
- * Returns { frontmatter, body, description } where `body` is the trimmed
- * raw markdown after the frontmatter block, and `description` is `body`
- * rendered to HTML. If the file has no frontmatter block, returns
- * `{ frontmatter: null, body: "", description: "" }` with a warn log.
+ *
+ * Returns `{ frontmatter, body, description, bodyLine, bodyColumn }` where
+ * `body` is the trimmed raw markdown after the frontmatter block, and
+ * `description` is `body` rendered to HTML. `bodyLine` / `bodyColumn` are the
+ * 1-based **file** position of the body's first character, which is what turns
+ * an offset within `body` into a position a diagnostic can name (#17) — see
+ * {@link positionInBody}. If the file has no frontmatter block, returns
+ * `{ frontmatter: null, body: "", description: "" }` with a warn log, and no
+ * position: there is no body to have one.
  */
 export function parseMarkdownFile(filePath) {
     const content = fs.readFileSync(filePath, "utf8");
@@ -76,14 +82,27 @@ export function parseMarkdownFile(filePath) {
         log.warn(`YAML parse error in ${filePath}: ${err.message}`);
         return { frontmatter: null, body: "", description: "" };
     }
-    const body = fmMatch[2].trim();
+    const raw = fmMatch[2];
+    const body = raw.trim();
     const description = body ? md.render(body) : "";
-    return { frontmatter, body, description };
+    // Where the trimmed body starts in the *file*, so an offset within it can
+    // be reported as a file position (#17). The frontmatter's lines and the
+    // blank lines `trim()` removes both sit in between, and the trim can take
+    // indentation off the first line as well — hence a column, not just a line.
+    const bodyStart =
+        content.length - raw.length + (raw.length - raw.trimStart().length);
+    const before = content.slice(0, bodyStart);
+    const bodyLine = before.split("\n").length;
+    const bodyColumn = bodyStart - before.lastIndexOf("\n");
+    return { frontmatter, body, description, bodyLine, bodyColumn };
 }
 
 /**
  * Recursively yields every `.md` file under `rootDir`, parsed.
- * Yields { frontmatter, description, file, absPath } for each match.
+ * Yields `{ frontmatter, body, description, file, absPath, bodyLine,
+ * bodyColumn }` for each match — the last two from
+ * {@link parseMarkdownFile}, so a caller can report a position inside the
+ * body as a position in the file (#17).
  * Silently skips directories that don't exist.
  *
  * Directory names in `skipDirectories` are ignored wherever they appear. The
@@ -455,19 +474,41 @@ export function buildContentLinkIndex(contentBase, router = packRouter()) {
 }
 
 /**
- * Converts the wikilinks in one note's markdown, logging any that have no
+ * Converts the wikilinks in one note's markdown, reporting any that have no
  * target in the content tree. Every compiler funnels through this so the
- * warning text and the leave-it-alone fallback are identical everywhere.
+ * diagnostic text and the leave-it-alone fallback are identical everywhere.
  *
- * @param {string} body - The note's markdown body.
+ * Each report names the **file, line and column** the link sits on (#17), so
+ * it can be opened and fixed — and so two identical links on one note are
+ * tellable apart. That needs `file` and the note's `bodyLine` / `bodyColumn`;
+ * without them the diagnostic still reports, one field shorter, rather than
+ * inventing a position.
+ *
+ * @param {string} body - The note's markdown body, tables already expanded.
  * @param {object} ctx - `{ type, id, pack, docPack, index, name }` — `name` is
- *   used in the log, and the two pack names address a `[[#slug]]` self-link,
- *   whose target is the source note itself and so has no index entry.
+ *   used in the message, and the two pack names address a `[[#slug]]`
+ *   self-link, whose target is the source note itself and so has no index
+ *   entry. Position is carried by `{ file, bodyLine, bodyColumn, lineMap }`,
+ *   the last from {@link expandNoteTables}.
  * @returns {{markdown: string, unresolved: Array<object>}}
+ * @throws {Error} On an ambiguous alias or a dead qualified address. The error
+ *   carries `file` and `position`, so a caller reports it in the same form
+ *   rather than re-deriving one.
  */
 export function convertNoteWikilinks(
     body,
-    { type, id, pack, docPack, index, name },
+    {
+        type,
+        id,
+        pack,
+        docPack,
+        index,
+        name,
+        file,
+        bodyLine,
+        bodyColumn,
+        lineMap,
+    },
 ) {
     const result = convertWikilinks(body ?? "", {
         type,
@@ -476,6 +517,36 @@ export function convertNoteWikilinks(
         docPack,
         index,
     });
+    /**
+     * Where one unresolved link sits, in file coordinates.
+     *
+     * @param {object} u - An entry of `result.unresolved`.
+     * @returns {{line?: number, column?: number, generated?: boolean}} Empty
+     *   when the caller supplied no position to resolve against.
+     */
+    const locate = (u) =>
+        bodyLine === undefined || u.offset === undefined ?
+            {}
+        :   positionInBody(body ?? "", u.offset, {
+                bodyLine,
+                bodyColumn,
+                lineMap,
+            });
+
+    /**
+     * Fails the note, carrying the position for the caller to report.
+     *
+     * @param {object} u - The offending link.
+     * @param {string} message - What is wrong.
+     * @returns {never}
+     */
+    const fail = (u, message) => {
+        const err = new Error(message);
+        err.file = file;
+        err.position = locate(u);
+        throw err;
+    };
+
     for (const u of result.unresolved) {
         // An ambiguous alias matched real content — twice. There is no
         // defensible way to pick one, and the correction is mechanical: write
@@ -492,8 +563,9 @@ export function convertNoteWikilinks(
                         .map((c) => `"${c.name}" (${c.type}-${c.shortcode})`)
                         .join(" and ")
                 :   "two or more notes";
-            throw new Error(
-                `Ambiguous wikilink in "${name}": ${u.link} — claimed by ` +
+            fail(
+                u,
+                `ambiguous wikilink ${u.link} in "${name}" — claimed by ` +
                     `${named}. Rename one alias, or address the intended one ` +
                     `as [[type-shortcode|Text]].`,
             );
@@ -503,13 +575,27 @@ export function convertNoteWikilinks(
         // fails the note rather than degrading to text. A bare alias stays a
         // warning: it may be ordinary prose that merely looks like a link.
         if (u.addressed) {
-            throw new Error(
-                `Unresolved address in "${name}": ${u.link} — no package ` +
+            fail(
+                u,
+                `unresolved address ${u.link} in "${name}" — no package ` +
                     `publishes it. Fix the shortcode, or re-vendor that ` +
                     `package's manifest into assets/manifests/.`,
             );
         }
-        log.warn(`Unresolved wikilink in "${name}" (${u.reason}): ${u.link}`);
+        const at = locate(u);
+        emitDiagnostic({
+            file,
+            line: at.line,
+            column: at.column,
+            severity: "warning",
+            message:
+                `unresolved wikilink ${u.link} (${u.reason}) in "${name}"` +
+                // A link this build wrote is not at any authored position, so
+                // say where it came from instead of implying an edit site.
+                (at.generated ?
+                    " — emitted by the content table on this line"
+                :   ""),
+        });
     }
     return result;
 }
@@ -575,28 +661,41 @@ const packLinkable = (doc) =>
  * @param {string} [ctx.pkg] - The source note's `package`.
  * @param {object} [ctx.fm] - The source note's frontmatter, which is what a
  *   query's `this` reads. Its entry in `docs` supplies the path as well.
- * @returns {string} The body with every table expanded.
+ * @param {number} [ctx.bodyLine] - 1-based file line of the body's first line,
+ *   so a failing directive can be reported at its position in the file.
+ * @returns {{markdown: string, lineMap: Array<{line: number,
+ *   generated: boolean}>}} The body with every table expanded, and where each
+ *   emitted line came from — which is what lets a diagnostic about the
+ *   expanded body name an authored position (#17).
  * @throws {Error} When a query is malformed or unsupported — the note fails to
- *   compile rather than shipping a table-shaped hole.
+ *   compile rather than shipping a table-shaped hole. The error carries
+ *   `position`, the directive's own line.
  */
-export function expandNoteTables(body, { docs, name, pkg, fm }) {
+export function expandNoteTables(body, { docs, name, pkg, fm, bodyLine }) {
     const scoped = pkg ? docs.filter((d) => d.fm?.package === pkg) : docs;
     const self =
         fm ?
             (docs.find((d) => d.fm?.id && d.fm.id === fm.id) ?? { fm })
         :   undefined;
-    const { markdown, errors } = expandContentTables(body ?? "", {
+    const { markdown, errors, lineMap } = expandContentTables(body ?? "", {
         docs: scoped,
         linkable: packLinkable,
         source: name,
         self,
     });
     if (errors.length) {
-        throw new Error(
+        const err = new Error(
             errors.map((e) => `content table — ${e.reason}`).join("; "),
         );
+        // The first failing directive's line. Reporting one position for a
+        // message that may name several is honest here: a caller opens the
+        // file at the first thing to fix, and the message lists the rest.
+        if (bodyLine !== undefined && errors[0].line !== undefined) {
+            err.position = { line: bodyLine + errors[0].line };
+        }
+        throw err;
     }
-    return markdown;
+    return { markdown, lineMap };
 }
 
 /* ------------------------------------------------------------------------ */
