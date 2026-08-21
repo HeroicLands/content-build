@@ -38,6 +38,7 @@
  *   npx content-build package unpack [pack] [entry]
  *   npx content-build package clean [pack] [entry]
  *   npx content-build docs item-fields [--out <path>] [--title <title>]
+ *   npx content-build lint [root]
  *
  * In a consuming repository, wrapped as npm scripts — SoHL spells them:
  *   npm run build:compiledb                // → … package compile (all packs)
@@ -59,6 +60,8 @@ import {
 import { loadPackConfig } from "../engine/pack-config.mjs";
 import { readPackageManifest } from "../engine/package-manifest.mjs";
 import { renderItemFieldReference } from "../engine/field-reference.mjs";
+import { lintContentTree } from "../engine/content-lint.mjs";
+import { emitDiagnostic } from "../engine/diagnostics.mjs";
 
 /**
  * The packs the shipped Foundry package declares — what `unpack` extracts.
@@ -109,6 +112,7 @@ prefix.apply(log, {
 const argv = yargs(hideBin(process.argv))
     .command(packageCommand())
     .command(docsCommand())
+    .command(lintCommand())
     .version(ownVersion())
     .help()
     .alias("help", "h").argv;
@@ -156,6 +160,53 @@ function docsCommand() {
                     log.info(`Wrote ${out}`);
                 } else {
                     process.stdout.write(`${md}\n`);
+                }
+            } catch (err) {
+                log.error(err.message);
+                process.exitCode = 1;
+            }
+        },
+    };
+}
+
+/**
+ * `content-build lint` — check a content tree's addresses.
+ *
+ * Deliberately independent of the pack pipeline: it compiles nothing, opens no
+ * LevelDB and needs no Foundry manifest, so it runs in a second and can gate a
+ * commit. The content root comes from the consuming repository's
+ * `content-build.config.mjs` unless one is named on the command line, so the
+ * usual invocation takes no arguments at all.
+ *
+ * @returns {object} The yargs command module.
+ */
+// eslint-disable-next-line
+function lintCommand() {
+    return {
+        command: "lint [root]",
+        describe: "Check a content tree's addresses",
+        builder: (yargs) => {
+            yargs.positional("root", {
+                describe:
+                    "Content tree to lint. Defaults to the configured contentBase.",
+                type: "string",
+            });
+        },
+        handler: (argv) => {
+            try {
+                const root = argv.root ?? loadPackConfig().paths.content;
+                const { findings, notes, keys } = lintContentTree(root);
+                for (const finding of findings) emitDiagnostic(finding);
+                if (findings.length) {
+                    log.error(
+                        `${findings.length} finding(s) across ${notes} note(s).`,
+                    );
+                    process.exitCode = 1;
+                } else {
+                    log.info(
+                        `Addresses are well-formed and unique ` +
+                            `(${keys} across ${notes} note(s)).`,
+                    );
                 }
             } catch (err) {
                 log.error(err.message);

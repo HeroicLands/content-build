@@ -169,3 +169,66 @@ export function positionInBody(
         generated,
     };
 }
+
+/**
+ * Where a **frontmatter key** is declared in a note's file.
+ *
+ * {@link positionInBody} answers the same question for the body, and the two
+ * are separate because the body is what the compilers scan while frontmatter is
+ * what the linters read — a key sits *before* the body, so a body offset can
+ * never reach it.
+ *
+ * The search is deliberately scoped to the frontmatter block rather than run
+ * over the whole file. A bare search for the key would match the first place
+ * the word appears anywhere, which for a key like `name` or `type` is routinely
+ * a line of prose — sending the reader to a position that is not the problem,
+ * which is the one thing the located form exists to prevent.
+ *
+ * @param {string} raw - The file's full contents, frontmatter included.
+ * @param {string} key - The top-level frontmatter key.
+ * @param {string} [value] - When given, prefer the occurrence whose line also
+ *   carries this text. A list-valued key (`aliases`) is reported at the entry
+ *   that is wrong, not at the key that introduces it.
+ * @returns {{line?: number, column?: number}} Spreadable position fields, empty
+ *   when the key cannot be located — dropped rather than guessed, as
+ *   {@link formatDiagnostic} requires.
+ */
+export function positionInFrontmatter(raw, key, value = undefined) {
+    if (typeof raw !== "string" || !key) return {};
+    const fence = raw.match(/^---\n([\s\S]*?)\n---/);
+    if (!fence) return {};
+    const block = fence[1];
+    const lines = block.split("\n");
+
+    // A value locates the exact entry; the key alone locates its declaration.
+    const wanted = value == null ? undefined : String(value);
+    let keyLine = -1;
+    for (let i = 0; i < lines.length; i++) {
+        if (wanted != null && lines[i].includes(wanted)) {
+            keyLine = i;
+            break;
+        }
+        if (
+            keyLine === -1 &&
+            new RegExp(`^\\s*${escape(key)}\\s*:`).test(lines[i])
+        ) {
+            keyLine = i;
+            if (wanted == null) break;
+        }
+    }
+    if (keyLine === -1) return {};
+
+    const needle = wanted != null ? wanted : key;
+    const column = lines[keyLine].indexOf(needle);
+    return {
+        // +2: the file's line 1 is the opening `---`, so the block's line 0 is
+        // the file's line 2.
+        line: keyLine + 2,
+        ...(column === -1 ? {} : { column: column + 1 }),
+    };
+}
+
+/** Escape a literal for use inside a `RegExp`. */
+function escape(literal) {
+    return String(literal).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
