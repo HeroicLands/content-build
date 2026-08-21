@@ -13,19 +13,24 @@
 
 import { describe, it, expect } from "vitest";
 import { createRequire } from "node:module";
+import path from "node:path";
 // Imported by relative path, not the `@src` alias, because the pack-build
 // scripts live outside that tree.
 import { ITEM_BUILDERS } from "../sohl/item-builders.mjs";
 import { itemTypes, itemBuilder } from "../engine/item-registry.mjs";
 import { DEFAULT_ITEM_ART } from "../sohl/default-item-art.mjs";
+import { Items } from "../sohl/items.mjs";
+import { loadPackConfig } from "../engine/pack-config.mjs";
 
 const BUILDERS = ITEM_BUILDERS as Record<string, unknown>;
 
 describe("ITEM_BUILDERS (the one registry keyed by item type, #1504)", () => {
-    it("maps every registered type to a builder function", () => {
+    it("maps every registered type to a builder paired with its art", () => {
         expect(Object.keys(BUILDERS).length).toBeGreaterThan(0);
-        for (const [type, builder] of Object.entries(BUILDERS)) {
-            expect(typeof builder, type).toBe("function");
+        for (const [type, entry] of Object.entries(BUILDERS)) {
+            const paired = entry as { system: unknown; img: unknown };
+            expect(typeof paired.system, type).toBe("function");
+            expect(typeof paired.img, type).toBe("string");
         }
     });
 
@@ -52,6 +57,18 @@ describe("ITEM_BUILDERS (the one registry keyed by item type, #1504)", () => {
             [...itemTypes()].sort(),
         );
     });
+
+    it("pairs each type with its own entry from the one art map (#7)", () => {
+        // Art travels with the builder now, so a consumer's own item type can
+        // bring art of its own. For *this* registry that must change nothing:
+        // every entry's `img` is still the value `DEFAULT_ITEM_ART` holds, which
+        // is what keeps this build and `SohlItem.getDefaultArtwork` reading one
+        // map (SoHL#932/#1510).
+        const art = DEFAULT_ITEM_ART as Record<string, string>;
+        for (const [type, entry] of Object.entries(BUILDERS)) {
+            expect((entry as { img: string }).img, type).toBe(art[type]);
+        }
+    });
 });
 
 describe("itemBuilder (lookup that fails loudly)", () => {
@@ -71,8 +88,15 @@ describe("itemBuilder (lookup that fails loudly)", () => {
         const registry = createRequire(import.meta.url)(
             "../sohl/item-builders.mjs",
         ).ITEM_BUILDERS as Record<string, unknown>;
-        expect(itemBuilder("skill")).toBe(registry["skill"]);
-        expect(itemBuilder("weapongear")).toBe(registry["weapongear"]);
+        // The resolved configuration holds the entries' `system` builders, not
+        // the entries themselves — `itemBuilder` has always returned something
+        // callable, and the paired shape (#7) did not change that.
+        expect(itemBuilder("skill")).toBe(
+            (registry["skill"] as { system: unknown }).system,
+        );
+        expect(itemBuilder("weapongear")).toBe(
+            (registry["weapongear"] as { system: unknown }).system,
+        );
         // …and that copy is the same table, key for key, as the one this
         // suite imported.
         expect(Object.keys(registry).sort()).toEqual(
@@ -85,5 +109,52 @@ describe("itemBuilder (lookup that fails loudly)", () => {
         // per-file compile error; an unregistered type now names itself.
         expect(() => itemBuilder("trait")).toThrow(/no builder.*trait/i);
         expect(() => itemBuilder("nonesuch")).toThrow(/no builder/i);
+    });
+});
+
+describe("the art a compiled sohl item actually gets (#7)", () => {
+    /**
+     * The Item compiler, against this repository's own configuration.
+     *
+     * `contentBase` is the fixtures directory rather than the configured
+     * content tree: this repository ships no content of its own, and the
+     * compiler's constructor insists the tree exist. Nothing here walks it —
+     * `buildEntry` is handed its frontmatter directly.
+     */
+    function compiler() {
+        const config = loadPackConfig();
+        return new Items({
+            contentBase: path.join(config.rootDir, "tests/fixtures"),
+            dest: config.paths.packJson,
+        });
+    }
+
+    /** A `skill` note with no `img:` — the case the default is for. */
+    const SKILL_FM = {
+        id: "DDDDDDDDDDDDDDDD",
+        type: "skill",
+        shortcode: "awar",
+        name: { full: "Awareness" },
+        sohl: { subType: "physical", archetype: null },
+    };
+
+    it("is the map's entry, exactly as before the art moved", () => {
+        // Routing art through configuration must not change a single compiled
+        // path for this package. `DEFAULT_ITEM_ART` holds already-served
+        // `systems/sohl/…` paths, which `resolveImg` returns untouched, so the
+        // value here is the map's value and not an asset-root rewrite of it.
+        const entry = compiler().buildEntry(SKILL_FM, "");
+
+        expect(entry.img).toBe(DEFAULT_ITEM_ART.skill);
+        expect(entry.img).toBe("systems/sohl/assets/icons/other/head-gear.svg");
+    });
+
+    it("still lets a note override it", () => {
+        const entry = compiler().buildEntry(
+            { ...SKILL_FM, img: "systems/sohl/assets/icons/custom.svg" },
+            "",
+        );
+
+        expect(entry.img).toBe("systems/sohl/assets/icons/custom.svg");
     });
 });

@@ -223,8 +223,11 @@ export function slugify(name) {
  *
  * This is translation only: the per-type default for an empty result is
  * domain-specific (actors default differently from items, and gear differently
- * again), so each builder owns its own default map and applies it to the
- * result — `resolveImg(fm.img) || DEFAULT_IMG[type]`.
+ * again), so each compiler owns its own default and applies it to the result —
+ * `resolveImg(fm.img) || <default>`. For items that default is the art paired
+ * with the type's builder, reached through `itemArt()`, which runs the path
+ * back through this function so a registry entry and a note's `img:` are
+ * spelled the same way (#7).
  *
  * @param {string | null | undefined} raw - content-relative path from frontmatter.
  * @param {{assetRoot: string}} [config] - The resolved build configuration.
