@@ -19,6 +19,14 @@ describe("resolveRelation (pack builder — affiliation standing map, #1404)", (
         expect(resolveRelation({ sohl: {} })).toEqual({});
     });
 
+    it("reads an empty list as an empty map — that is what Obsidian writes", () => {
+        // Obsidian's property editor renders an emptied map as `[]`, so a note
+        // whose relations were cleared in the editor authors `relation: []`. It
+        // means exactly what `relation: {}` means: neutral toward everyone.
+        expect(resolveRelation({ relation: [] })).toEqual({});
+        expect(resolveRelation({ sohl: { relation: [] } })).toEqual({});
+    });
+
     it("passes an authored map through, from the sohl block or the top level", () => {
         expect(
             resolveRelation({ sohl: { relation: { peoni: "nemesis" } } }),
@@ -50,6 +58,8 @@ describe("resolveRelation (pack builder — affiliation standing map, #1404)", (
     });
 
     it("throws when the map is not a map", () => {
+        // A *populated* list is still an error: it is not a map, and dropping
+        // its entries is the silent data loss this resolver exists to prevent.
         expect(() => resolveRelation({ relation: ["peoni"] }, "Agrik")).toThrow(
             /map of shortcode/,
         );
