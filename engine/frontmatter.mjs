@@ -65,6 +65,35 @@ export function sohlField(fm, key, defaultValue = undefined) {
 }
 
 /**
+ * Read a frontmatter property that is authored as a **map**, returning its
+ * entries — or `null` when the note authors none.
+ *
+ * Obsidian's property editor serializes an **emptied map as an empty list**, so
+ * a note whose map property was ever touched and cleared in the editor arrives
+ * as `[]`, not `{}`. The two spellings mean the same thing — this note authors
+ * no entries — and a build that accepted only one of them failed on notes the
+ * editor itself had produced (#8; 44 affiliation notes in `sohl-thalorna`).
+ * Normalizing the notes would fix only today's tree: the next editor touch puts
+ * the empty list back.
+ *
+ * A **populated** array is still malformed, and stays the caller's error to
+ * raise: a list of entries is not a map, and quietly dropping them is the
+ * silent data loss these readers exist to prevent.
+ *
+ * @param {object} fm - The item frontmatter.
+ * @param {string} key - The property name, read via {@link sohlField}.
+ * @returns {[string, unknown][] | null} The property's entries — empty when the
+ *   note authors none — or `null` when the value is not a map.
+ */
+function readMapEntries(fm, key) {
+    const raw = sohlField(fm, key, undefined);
+    if (raw == null) return [];
+    if (Array.isArray(raw)) return raw.length === 0 ? [] : null;
+    if (typeof raw !== "object") return null;
+    return Object.entries(raw);
+}
+
+/**
  * Resolve the `charges` block shared by Mystery and Mystical Ability items.
  *
  * Charge usage is carried by the **maximum** alone (#1129): a `null` max means
@@ -107,22 +136,25 @@ export function resolveCharges(fm) {
  * kept — an element a sign leaves untouched still beats one another sign
  * hinders, so it carries real weight when maps merge.
  *
+ * An absent property, an empty map, and the empty **list** Obsidian's property
+ * editor writes for a cleared map all mean the same thing — see
+ * {@link readMapEntries}.
+ *
  * @param {object} fm - The item frontmatter.
  * @param {string} [ctx] - Label for the error (defaults to "item").
  * @returns {Record<string, number>} The persisted aptitude map (empty when
  *   the item authors none).
- * @throws {Error} When a value is not an integer.
+ * @throws {Error} When the value is not a map, or a value is not an integer.
  */
 export function resolveSkillAptitudes(fm, ctx = "item") {
-    const raw = sohlField(fm, "skillAptitudes", undefined);
-    if (raw == null) return {};
-    if (typeof raw !== "object" || Array.isArray(raw)) {
+    const entries = readMapEntries(fm, "skillAptitudes");
+    if (entries === null) {
         throw new Error(
             `${ctx}: skillAptitudes must be a map of selector → number`,
         );
     }
     const out = {};
-    for (const [selector, value] of Object.entries(raw)) {
+    for (const [selector, value] of entries) {
         const num = Number(value);
         if (!Number.isInteger(num)) {
             throw new Error(
@@ -142,6 +174,10 @@ export function resolveSkillAptitudes(fm, ctx = "item") {
  * and be dropped silently, shipping an affiliation whose authored hostility had
  * quietly become neutrality — so it is a build error instead.
  *
+ * An absent property, an empty map, and the empty **list** Obsidian's property
+ * editor writes for a cleared map all mean the same thing — neutral toward
+ * everyone. See {@link readMapEntries}.
+ *
  * @param {object} fm - The item frontmatter.
  * @param {string} [ctx] - Label for the error (defaults to "item").
  * @returns {Record<string, string>} The persisted relation map (empty when the
@@ -149,15 +185,14 @@ export function resolveSkillAptitudes(fm, ctx = "item") {
  * @throws {Error} When the map is malformed or names an unknown standing.
  */
 export function resolveRelation(fm, ctx = "item") {
-    const raw = sohlField(fm, "relation", undefined);
-    if (raw == null) return {};
-    if (typeof raw !== "object" || Array.isArray(raw)) {
+    const entries = readMapEntries(fm, "relation");
+    if (entries === null) {
         throw new Error(
             `${ctx}: relation must be a map of shortcode → standing`,
         );
     }
     const out = {};
-    for (const [code, value] of Object.entries(raw)) {
+    for (const [code, value] of entries) {
         const standing = String(value);
         if (!AFFILIATION_STANDINGS.includes(standing)) {
             throw new Error(

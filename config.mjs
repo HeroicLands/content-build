@@ -243,6 +243,16 @@ export const PACK_DOCUMENT_TYPES = /** @type {const} */ ([
  */
 
 /**
+ * One entry of a consumer's `itemBuilders` registry.
+ *
+ * Either a bare builder function, or that builder paired with the type's
+ * default art. See {@link normalizeItemBuilders} for why the paired form
+ * exists.
+ *
+ * @typedef {((fm: object) => object)|{system: (fm: object) => object, img?: string}} ItemBuilderEntry
+ */
+
+/**
  * The configuration a consumer writes.
  *
  * @typedef {object} ContentBuildConfigInput
@@ -257,12 +267,15 @@ export const PACK_DOCUMENT_TYPES = /** @type {const} */ ([
  *                                          `system.json` / `module.json`.
  * @property {PackageKind} packageKind      Whether the package is a system or a module.
  * @property {StatsSpec} stats              Identity stamped into every document's `_stats`.
- * @property {Record<string, Function>} [itemBuilders]  The consumer's item-type
- *                                          registry: each content `type` that
- *                                          compiles into an Item, paired with the
- *                                          builder producing its `system` block.
- *                                          Default `{}` — a content module that
- *                                          ships no items declares none.
+ * @property {Record<string, ItemBuilderEntry>} [itemBuilders]  The consumer's
+ *                                          item-type registry: each content `type`
+ *                                          that compiles into an Item, paired with
+ *                                          the builder producing its `system` block
+ *                                          — and, optionally, the default art a
+ *                                          note of that type gets when it sets no
+ *                                          `img:` of its own. Default `{}` — a
+ *                                          content module that ships no items
+ *                                          declares none.
  * @property {PackSpec[]} packs             Packs to compile. More than one entry
  *                                          may share a `type`: a note then names
  *                                          the pack it belongs in with its
@@ -290,7 +303,13 @@ export const PACK_DOCUMENT_TYPES = /** @type {const} */ ([
  *                                     `<packageKind>/<foundryPackage>/assets`.
  * @property {Readonly<ResolvedPaths>} paths
  * @property {Readonly<StatsSpec>} stats
- * @property {Readonly<Record<string, Function>>} itemBuilders
+ * @property {Readonly<Record<string, Function>>} itemBuilders  Derived: the
+ *                                     `system` builder of each entry, whichever
+ *                                     of the two spellings declared it.
+ * @property {Readonly<Record<string, string>>} itemArt  Derived: the default art
+ *                                     of each entry that paired one. Sparse — a
+ *                                     type absent here has no default, and a note
+ *                                     of it must carry `img:` (#7).
  * @property {ReadonlySet<string>} itemTypes       Derived: the keys of
  *                                     {@link ContentBuildConfigInput.itemBuilders},
  *                                     so the accepted item types and the builder
@@ -322,6 +341,7 @@ const CONFIG_KEYS = [
     "assets",
     "publish",
 ];
+const ITEM_BUILDER_KEYS = ["system", "img"];
 const PACK_KEYS = [
     "name",
     "type",
@@ -546,26 +566,79 @@ function normalizeAsset(value, index) {
 }
 
 /**
- * Validate a consumer's item-type registry.
+ * Validate a consumer's item-type registry, splitting it into the two tables
+ * the rest of the toolchain reads.
  *
  * The registry is *code* a consumer supplies — the only place the configuration
  * carries any — because the type list and the builder table have to be the same
  * list. They were two, and `trait` sat in the whitelist for a release with no
  * builder behind it (#1504).
  *
+ * **An entry may be written two ways**, and the difference is only whether the
+ * type brings default art:
+ *
+ * - `type: fn` — a bare builder. Every note of the type must carry its own
+ *   `img:`.
+ * - `type: { system: fn, img }` — the same builder, paired with the image a
+ *   note of the type gets when it sets no `img:` of its own.
+ *
+ * The paired form exists because the type whitelist and the default art used to
+ * travel by different routes: `itemTypes` was derived from these keys, while
+ * art was looked up in `sohl/default-item-art.mjs` — a table a consumer cannot
+ * add to. A consumer's own item type was therefore configurable while its
+ * default art was not, so its notes all had to carry an explicit `img:` (#7).
+ * Art now travels with the builder it belongs to, which is the one place a type
+ * is already declared.
+ *
  * @param {unknown} value
- * @returns {Readonly<Record<string, Function>>}
+ * @returns {{itemBuilders: Readonly<Record<string, Function>>,
+ *            itemArt: Readonly<Record<string, string>>}}
+ *   The `system` builder for each type, and the default art for those types
+ *   that paired one. The art table is deliberately *sparse*: a bare-function
+ *   entry contributes no key, which is what distinguishes "no default art" from
+ *   an empty one.
  */
 function normalizeItemBuilders(value) {
-    if (value === undefined) return Object.freeze({});
+    if (value === undefined) {
+        return { itemBuilders: Object.freeze({}), itemArt: Object.freeze({}) };
+    }
     if (!isPlainObject(value)) fail("itemBuilders", "must be an object");
     const input = /** @type {Record<string, unknown>} */ (value);
-    for (const [type, builder] of Object.entries(input)) {
-        if (typeof builder !== "function") {
-            fail(`itemBuilders.${type}`, "must be a function");
+
+    /** @type {Record<string, Function>} */
+    const itemBuilders = {};
+    /** @type {Record<string, string>} */
+    const itemArt = {};
+
+    for (const [type, entry] of Object.entries(input)) {
+        if (typeof entry === "function") {
+            itemBuilders[type] = entry;
+            continue;
+        }
+        if (!isPlainObject(entry)) {
+            fail(
+                `itemBuilders.${type}`,
+                "must be a builder function, or an object with a `system` builder",
+            );
+        }
+        const paired = /** @type {Record<string, unknown>} */ (entry);
+        rejectUnknownKeys(paired, ITEM_BUILDER_KEYS, `itemBuilders.${type}.`);
+        if (typeof paired.system !== "function") {
+            fail(`itemBuilders.${type}.system`, "must be a function");
+        }
+        itemBuilders[type] = /** @type {Function} */ (paired.system);
+        if (paired.img !== undefined) {
+            itemArt[type] = requireNonEmptyString(
+                paired.img,
+                `itemBuilders.${type}.img`,
+            );
         }
     }
-    return Object.freeze({ ...input });
+
+    return {
+        itemBuilders: Object.freeze(itemBuilders),
+        itemArt: Object.freeze(itemArt),
+    };
 }
 
 /**
@@ -714,7 +787,7 @@ export function defineConfig(config) {
         "foundryPackage",
     );
 
-    const itemBuilders = normalizeItemBuilders(input.itemBuilders);
+    const { itemBuilders, itemArt } = normalizeItemBuilders(input.itemBuilders);
     const itemTypes = Object.freeze(new Set(Object.keys(itemBuilders)));
 
     return Object.freeze({
@@ -731,6 +804,7 @@ export function defineConfig(config) {
         paths: normalizePaths(input.paths, rootDir),
         stats: normalizeStats(input.stats),
         itemBuilders,
+        itemArt,
         // Resolved once, here, and read everywhere through
         // `loadPackConfig()`. The doc-entry *concept* is the engine's —
         // a note that carries documentation is not a SoHL idea — but the

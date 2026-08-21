@@ -49,7 +49,6 @@ import { BasePackCompiler } from "../engine/base-compiler.mjs";
 // runtime (`SohlItem.getDefaultArtwork`), so the two can't drift — see #932.
 // It lives in the build package, not `src/`: a relative path out of the package
 // resolves to garbage once this pipeline runs from `node_modules` (#1510).
-import { defaultItemArt } from "./default-item-art.mjs";
 import { journalPageId, splitPages } from "../engine/journals.mjs";
 import { foundryPackageId } from "../engine/content-package.mjs";
 import { itemDocEntryId, itemDocPointer } from "../engine/item-docs.mjs";
@@ -57,7 +56,7 @@ import { itemDocEntryId, itemDocPointer } from "../engine/item-docs.mjs";
 // configuration, so the types this pass claims and the builders it compiles
 // them with are one table — the consuming repository's, not this package's
 // (#1504/#1563).
-import { itemTypes, itemBuilder } from "../engine/item-registry.mjs";
+import { itemTypes, itemBuilder, itemArt } from "../engine/item-registry.mjs";
 
 /**
  * The description an item carries: a pointer to its **item doc**, the
@@ -162,7 +161,7 @@ export class Items extends BasePackCompiler {
         return {
             name,
             type,
-            img: resolveImg(fm.img) || defaultItemArt(type),
+            img: resolveImg(fm.img) || itemArt(type),
             _id: id,
             system,
             effects,

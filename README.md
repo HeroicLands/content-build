@@ -54,7 +54,8 @@ export default defineConfig({
   // Which content types compile into Items, and what builds each one's
   // `system` block. The keys are the accepted item types, so a type cannot be
   // whitelisted without a builder behind it. A module that ships no items
-  // declares none.
+  // declares none. An entry may also pair the type's default art — see
+  // "An item type's default art" below.
   itemBuilders: ITEM_BUILDERS,
   // Directory names the content walk ignores wherever they appear.
   skipDirectories: ["Templates"],
@@ -207,6 +208,60 @@ the package-id drift guard and the compiled packs' `_stats.coreVersion` both rea
 it from there. The core version itself is deliberately not a config field — it is
 the manifest's `compatibility.minimum`, which moves with test evidence, and a
 copy would silently stop following it.
+
+### An item type's default art
+
+A note that carries no `img:` gets its type's **default art**, and a type
+declares that art in the same place it declares its builder. An `itemBuilders`
+entry may be written two ways:
+
+```js
+itemBuilders: {
+  // A bare builder. Every note of this type must carry its own `img:`.
+  charm: buildCharm,
+  // The same builder, paired with the art a note of this type gets when it
+  // sets no `img:` of its own.
+  relic: { system: buildRelic, img: "icons/relic.svg" },
+}
+```
+
+Both spellings are equal; the difference is only whether the type brings art.
+`itemTypes` is still the key set either way, so a type is still impossible to
+whitelist without a builder behind it.
+
+**The path is spelled the way a note spells it.** Registry art goes through the
+same `resolveImg` rule as a note's `img:`, so `icons/relic.svg` means _this_
+repository's asset root — `modules/sohl-relics/assets/icons/relic.svg` — and an
+already-served path (`systems/sohl/assets/icons/…`) passes through untouched.
+
+**A type with neither is a build error, deliberately.** When a note sets no
+`img:` and its type pairs none, the pack build aborts rather than shipping an
+item with a mismatched icon:
+
+```
+No default art for item type "relic" — the note carries no `img:`, and the
+`itemBuilders` entry for "relic" in this repository's content-build.config.mjs
+pairs none with its builder.
+```
+
+#### Why art travels with the builder (#7)
+
+It did not always. The item **type** whitelist was derived from a consumer's
+`itemBuilders` keys, while the **art** for those same types was looked up in
+`sohl/default-item-art.mjs` — a table this package ships for the `sohl` package
+and which a consumer cannot add to. A type was therefore configurable while its
+default art was not, and a second consumer's own item type compiled only if
+every one of its notes carried an explicit `img:`; the first note that omitted
+one failed the build with an error naming a module in someone else's package.
+
+Widening that map was not the fix. It is deliberately SoHL data, shared with the
+runtime's `SohlItem.getDefaultArtwork` so that the build-time and runtime
+defaults are one list and cannot drift (SoHL#932/#1510). Pairing art with the
+builder instead moves it onto the seam a type is _already_ declared through, and
+costs the `sohl` package nothing: `ITEM_BUILDERS` reads each entry's image out of
+that same map, so there is still exactly one map — and the drift a test used to
+watch for is now unrepresentable, because building the registry throws if a type
+has no art.
 
 ## Layout
 

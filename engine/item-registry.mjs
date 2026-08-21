@@ -35,6 +35,7 @@
  */
 
 import { loadPackConfig } from "./pack-config.mjs";
+import { resolveImg } from "./helpers.mjs";
 
 /**
  * Every content type that compiles into an item — and therefore into an item
@@ -80,4 +81,47 @@ export function itemBuilder(type) {
         );
     }
     return /** @type {(fm: object) => object} */ (builder);
+}
+
+/**
+ * The default art for an item type — the image a note of that type is given
+ * when it carries no `img:` of its own.
+ *
+ * Read from the consuming repository's `itemBuilders` registry, the same place
+ * the type itself is declared, so a consumer's own type can bring art a
+ * SoHL-owned table could never hold. Art used to be looked up in
+ * `sohl/default-item-art.mjs` instead: a type was configurable while its
+ * default art was not, so a second consumer's items compiled only if every one
+ * of its notes set `img:` (#7).
+ *
+ * **Still fail-fast.** A type with neither a note-level `img:` nor paired art
+ * aborts the pack build rather than shipping a mismatched icon — the contract
+ * `defaultItemArt` was written for. Only the error's *owner* changed: it now
+ * names the registry the consumer declares and can add to.
+ *
+ * **Resolved by the same rule a note's `img:` is.** The path goes through
+ * {@link resolveImg}, so `icons/relic.svg` means the consumer's own asset root
+ * in the registry exactly as it does on a note, and an already-served path
+ * (`systems/sohl/assets/…`, as every SoHL default is) passes through untouched.
+ * One spelling, one meaning, wherever it is written.
+ *
+ * @param {string} type - the item type.
+ * @returns {string} The default image path for that type.
+ * @throws {Error} When the type's registry entry pairs no `img`.
+ */
+export function itemArt(type) {
+    const art = /** @type {Record<string, string|undefined>} */ (
+        loadPackConfig().itemArt
+    )[type];
+    if (!art) {
+        throw new Error(
+            `No default art for item type "${type}" — the note carries no ` +
+                `\`img:\`, and the \`itemBuilders\` entry for "${type}" in this ` +
+                `repository's content-build.config.mjs pairs none with its ` +
+                `builder. Write the entry as ` +
+                `\`${type}: { system: <builder>, img: "<path>" }\`, or give the ` +
+                `note an \`img:\` of its own.`,
+        );
+    }
+    return resolveImg(art);
 }
