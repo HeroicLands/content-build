@@ -32,7 +32,7 @@
  * `creature-grkrahk` and this build has never heard of it, is that a typo or a
  * note belonging to another package? Before the manifest nothing in the syntax
  * answered that, so the dead-link guard had to be left off for the hyphen form
- * or correct content would fail the build (see `kb-wikilinks.mjs`). With every
+ * or correct content would fail the build (see `web-wikilinks.mjs`). With every
  * package's manifest vendored, an address that resolves in none of them is a
  * typo, and the guard can be restored.
  *

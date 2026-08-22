@@ -69,6 +69,9 @@ export * as kbManifest from "./kb-manifest.mjs";
 /** Address rules every content tree is linted against: shape, uniqueness, alias. */
 export * as contentLint from "./content-lint.mjs";
 
+/** Wikilinks resolved to a **web URL** — the site half of the pair below. */
+export * as webWikilinks from "./web-wikilinks.mjs";
+
 /** Dataview-style content tables, expanded into markdown at compile time. */
 export * as contentTables from "./content-tables.mjs";
 
@@ -81,8 +84,11 @@ export * as itemRegistry from "./item-registry.mjs";
 /** Which types carry documentation of their own, and where it is addressed. */
 export * as itemDocs from "./item-docs.mjs";
 
-/** Wikilink resolution: qualifiers, the link index, and rewriting. */
+/** Wikilinks resolved to a **Foundry UUID**: qualifiers, the index, rewriting. */
 export * as wikilinks from "./wikilinks.mjs";
+
+/** What a `[[…]]` is, before either resolver decides where it points. */
+export * as wikilinkSyntax from "./wikilink-syntax.mjs";
 
 /** The shape every pack compiler shares. */
 export * as baseCompiler from "./base-compiler.mjs";

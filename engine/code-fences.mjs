@@ -267,3 +267,45 @@ export function matchAllOutsideCode(markdown, pattern, options) {
         (match) => !inside(regions, match.index),
     );
 }
+
+/**
+ * Run `transform` over a whole Markdown body while leaving code untouched.
+ *
+ * {@link replaceOutsideCode} is the right tool when the caller has a pattern.
+ * This is for the other shape: a transform that rewrites the **whole** body — a
+ * link rewriter, a path fixer — and must simply never see code. Each code run is
+ * stashed and replaced with a `\u0000<index>\u0000` sentinel; a NUL never occurs
+ * in Markdown source, so the sentinel cannot collide with prose and survives the
+ * transform unchanged before being restored.
+ *
+ * **Which runs count as code is {@link codeRegions}' rule, not a second copy of
+ * it.** The knowledgebase build carried its own regex once, and it was weaker in
+ * two ways that both corrupted the one page whose subject *is* link syntax — so
+ * its examples were exactly the input a looser rule mangles (SoHL#1665). A
+ * single-backtick span was allowed to cross newlines, so one odd backtick paired
+ * with another paragraphs away and every span after it paired wrongly: prose was
+ * masked as code while real spans were left exposed. And only three-backtick
+ * fences were recognised, so a four-backtick example holding a three-backtick
+ * block — the documented "fences of any length" case (#1505) — leaked its
+ * contents.
+ *
+ * @param {string} body - The markdown body.
+ * @param {(masked: string) => string} transform - Applied to the masked body.
+ * @returns {string} The transformed body, with every code run restored verbatim.
+ */
+export function protectCode(body, transform) {
+    const src = String(body ?? "");
+    const stash = [];
+    let masked = "";
+    let last = 0;
+    for (const region of codeRegions(src)) {
+        const index = stash.push(src.slice(region.start, region.end)) - 1;
+        masked += src.slice(last, region.start) + `\u0000${index}\u0000`;
+        last = region.end;
+    }
+    masked += src.slice(last);
+    return transform(masked).replace(
+        /\u0000(\d+)\u0000/g,
+        (_m, i) => stash[Number(i)],
+    );
+}
