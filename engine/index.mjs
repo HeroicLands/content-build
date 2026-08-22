@@ -63,6 +63,9 @@ export * as contentSlug from "./content-slug.mjs";
 /** Section and address derivation on top of {@link contentSlug}. */
 export * as contentAddress from "./content-address.mjs";
 
+/** Whether a vendored manifest can still be addressed, not merely read. */
+export * as foreignManifests from "./foreign-manifests.mjs";
+
 /** The cross-package link manifest: reader, writer, and canonical keys. */
 export * as kbManifest from "./kb-manifest.mjs";
 

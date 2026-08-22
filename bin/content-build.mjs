@@ -39,6 +39,8 @@
  *   npx content-build package clean [pack] [entry]
  *   npx content-build docs item-fields [--out <path>] [--title <title>]
  *   npx content-build lint [root]
+ *   npx content-build links [root] [--manifests <dir>]
+ *   npx content-build reachability <dir> [file] [--index <shortcode>]
  *
  * In a consuming repository, wrapped as npm scripts — SoHL spells them:
  *   npm run build:compiledb                // → … package compile (all packs)
@@ -61,7 +63,16 @@ import { loadPackConfig } from "../engine/pack-config.mjs";
 import { readPackageManifest } from "../engine/package-manifest.mjs";
 import { renderItemFieldReference } from "../engine/field-reference.mjs";
 import { lintContentTree } from "../engine/content-lint.mjs";
-import { emitDiagnostic } from "../engine/diagnostics.mjs";
+import {
+    auditLinks,
+    buildLinkIndex,
+    walkReachability,
+} from "../engine/content-links.mjs";
+import { emitDiagnostic, positionOfLiteral } from "../engine/diagnostics.mjs";
+import {
+    formatUnaddressableFinding,
+    unaddressableForeignPackages,
+} from "../engine/foreign-manifests.mjs";
 
 /**
  * The packs the shipped Foundry package declares — what `unpack` extracts.
@@ -113,6 +124,8 @@ const argv = yargs(hideBin(process.argv))
     .command(packageCommand())
     .command(docsCommand())
     .command(lintCommand())
+    .command(linksCommand())
+    .command(reachabilityCommand())
     .version(ownVersion())
     .help()
     .alias("help", "h").argv;
@@ -206,6 +219,232 @@ function lintCommand() {
                     log.info(
                         `Addresses are well-formed and unique ` +
                             `(${keys} across ${notes} note(s)).`,
+                    );
+                }
+            } catch (err) {
+                log.error(err.message);
+                process.exitCode = 1;
+            }
+        },
+    };
+}
+
+/**
+ * `content-build links` — check that every link in a content tree lands.
+ *
+ * Reports a dead `#anchor`, a dead qualified address, and a wikilink authored
+ * in frontmatter, plus a vendored manifest that has drifted out of reach. All
+ * of it is package-agnostic, so a consumer needs no script of its own: the
+ * manifest directory is the only thing it might name, and that comes from its
+ * configuration.
+ *
+ * @returns {object} The yargs command module.
+ */
+// eslint-disable-next-line
+function linksCommand() {
+    return {
+        command: "links [root]",
+        describe: "Check that every link in a content tree lands somewhere",
+        builder: (yargs) => {
+            yargs.positional("root", {
+                describe:
+                    "Content tree to check. Defaults to the configured contentBase.",
+                type: "string",
+            });
+            yargs.option("manifests", {
+                describe:
+                    "Directory of vendored foreign link manifests. Defaults " +
+                    "to the configured `paths.manifests`.",
+                type: "string",
+            });
+        },
+        handler: (argv) => {
+            try {
+                const config = loadPackConfig();
+                const contentBase = argv.root ?? config.paths.content;
+                const manifestDir = argv.manifests ?? config.paths.manifests;
+
+                const index = buildLinkIndex(contentBase, { manifestDir });
+
+                // An unusable manifest would otherwise surface as a pile of
+                // dead addresses pointing at the notes that cite it, rather
+                // than at the file at fault.
+                if (index.foreign.stale.length) {
+                    for (const s of index.foreign.stale) {
+                        emitDiagnostic({
+                            file: path.join(manifestDir, `${s.package}.json`),
+                            severity: "error",
+                            message: `unusable link manifest: ${s.reason}`,
+                        });
+                    }
+                    log.error(
+                        "Refresh the vendored copy from that package's own build.",
+                    );
+                    process.exitCode = 1;
+                    return;
+                }
+
+                // Readable is not the same as addressable: a key shape the
+                // lookup cannot parse makes every cross-package link miss, and
+                // the audit then blames the *notes*.
+                const drifted = unaddressableForeignPackages(
+                    index.foreign.index,
+                );
+                if (drifted.length) {
+                    for (const f of drifted) {
+                        console.error(
+                            formatUnaddressableFinding(f, manifestDir),
+                        );
+                    }
+                    process.exitCode = 1;
+                    return;
+                }
+
+                const {
+                    deadAnchors,
+                    deadAddresses,
+                    frontmatterLinks,
+                    usedManifest,
+                } = auditLinks(index);
+
+                for (const d of deadAnchors) {
+                    emitDiagnostic({
+                        file: d.note.file,
+                        ...positionOfLiteral(d.note.raw, d.text, d.occurrence),
+                        severity: "error",
+                        message:
+                            `link [[${d.link}]] points at an anchor no ` +
+                            `heading in ${d.dest.rel} declares`,
+                    });
+                }
+                for (const d of deadAddresses) {
+                    emitDiagnostic({
+                        file: d.note.file,
+                        ...positionOfLiteral(d.note.raw, d.text, d.occurrence),
+                        severity: "error",
+                        message: `dead address [[${d.target}]] — no document has that identity`,
+                    });
+                }
+                for (const f of frontmatterLinks) {
+                    emitDiagnostic({
+                        file: f.note.file,
+                        ...positionOfLiteral(f.note.raw, f.link),
+                        severity: "error",
+                        message:
+                            `wikilink ${f.link} authored in frontmatter at ` +
+                            `${f.path} — frontmatter is data and is never resolved`,
+                    });
+                }
+
+                const failures =
+                    deadAnchors.length +
+                    deadAddresses.length +
+                    frontmatterLinks.length;
+                if (failures) {
+                    log.error(
+                        `${failures} link problem(s) across ${index.notes.length} note(s).`,
+                    );
+                    process.exitCode = 1;
+                } else {
+                    log.info(
+                        `${index.notes.length} notes: every anchor link lands ` +
+                            `and every qualified address resolves ` +
+                            `(${usedManifest.size} cross-package reference(s) ` +
+                            `via manifest), no wikilink in frontmatter.`,
+                    );
+                }
+            } catch (err) {
+                log.error(err.message);
+                process.exitCode = 1;
+            }
+        },
+    };
+}
+
+/**
+ * `content-build reachability <dir> [file]` — check that a corpus reads through.
+ *
+ * The corpus is named on the command line rather than declared in code, because
+ * it never changes for a given repository: a consumer hardcodes the invocation
+ * in `package.json` and gets the check without writing a script.
+ *
+ *   content-build reachability Rules --index glossary
+ *   content-build reachability User_Guide --index glossary
+ *
+ * @returns {object} The yargs command module.
+ */
+// eslint-disable-next-line
+function reachabilityCommand() {
+    return {
+        command: "reachability <dir> [file]",
+        describe: "Check that every document in a corpus is reachable",
+        builder: (yargs) => {
+            yargs.positional("dir", {
+                describe:
+                    "The corpus directory, relative to the content tree root.",
+                type: "string",
+            });
+            yargs.positional("file", {
+                describe: "The corpus's entry page within that directory.",
+                type: "string",
+                default: "README.md",
+            });
+            yargs.option("index", {
+                describe:
+                    "Shortcode of a page walked *to* but not *through*. " +
+                    "Repeatable. An index links to nearly everything it " +
+                    "covers, so walking one makes the check vacuous.",
+                type: "string",
+                array: true,
+                default: [],
+            });
+            yargs.option("root", {
+                describe:
+                    "Content tree to read. Defaults to the configured contentBase.",
+                type: "string",
+            });
+        },
+        handler: (argv) => {
+            try {
+                const contentBase = argv.root ?? loadPackConfig().paths.content;
+                const dir = String(argv.dir).replace(/\/+$/, "");
+                const index = buildLinkIndex(contentBase);
+                const indexes = new Set(argv.index.map(String));
+
+                const { orphans } = walkReachability(index, {
+                    root: `${dir}/${argv.file}`,
+                    scope: (n) => n.rel.startsWith(`${dir}/`),
+                    stopAt: (n) => indexes.has(String(n.fm.shortcode)),
+                });
+
+                const total = index.notes.filter((n) =>
+                    n.rel.startsWith(`${dir}/`),
+                ).length;
+
+                for (const o of orphans) {
+                    // Unreachability is a property of the whole document, so
+                    // there is no line to name.
+                    emitDiagnostic({
+                        file: o.file,
+                        severity: "error",
+                        message:
+                            `unreachable from ${dir}/${argv.file} — nothing ` +
+                            `in ${dir} links to it`,
+                    });
+                }
+
+                if (orphans.length) {
+                    log.error(
+                        `${orphans.length} of ${total} document(s) in ${dir} ` +
+                            `cannot be arrived at by reading. A corpus is a ` +
+                            `book, not a pile of notes: link each one from the ` +
+                            `chapter or section that owns it.`,
+                    );
+                    process.exitCode = 1;
+                } else {
+                    log.info(
+                        `All ${total} document(s) in ${dir} are reachable ` +
+                            `from ${argv.file}.`,
                     );
                 }
             } catch (err) {

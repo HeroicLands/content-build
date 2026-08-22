@@ -371,3 +371,68 @@ export function auditLinks(index) {
         usedManifest,
     };
 }
+
+/**
+ * Walk a corpus from its root and report what nothing links to.
+ *
+ * A documentation set is a **book, not a pile of notes**: it has a page one,
+ * and everything in it should follow from that page by reading. A note with no
+ * inbound link still compiles into a pack and still publishes — it is simply
+ * impossible to arrive at. Nothing else in either build notices, because every
+ * other check asks whether a link *lands*, never whether a document is
+ * *reached*.
+ *
+ * **Which documents belong to the corpus is the caller's to say.** A
+ * repository's corpora are its own — one publishes rules and a user guide,
+ * another a setting gazetteer — so `scope` decides membership and this decides
+ * only reachability. Links out of the corpus are followed as real links; they
+ * are simply not pages of it.
+ *
+ * **`stopAt` marks a page walked *to* but not *through*.** An index page links
+ * to nearly everything it covers, so traversing one makes the whole check
+ * vacuous: a chapter could stop linking one of its own pages and the walk would
+ * still reach it by way of the index. Reachability has to hold along the
+ * reading path, which is why the exception exists and why it is deliberately
+ * narrow.
+ *
+ * @param {ReturnType<typeof buildLinkIndex>} index - The built index.
+ * @param {object} opts
+ * @param {string} opts.root - The corpus's entry page, as a tree-relative path.
+ * @param {(note: object) => boolean} opts.scope - Whether a note belongs to the
+ *   corpus.
+ * @param {(note: object) => boolean} [opts.stopAt] - Whether a note is walked
+ *   to but not through.
+ * @returns {{root: object, reached: Set<object>, orphans: object[]}} The root,
+ *   everything reached from it, and the corpus members that were not.
+ * @throws {Error} When no note sits at `root` — a corpus with no page one
+ *   cannot be walked, and silently reporting every page as an orphan would
+ *   bury the actual mistake.
+ */
+export function walkReachability(index, { root, scope, stopAt = () => false }) {
+    const rootNote = index.notes.find((n) => n.rel === root);
+    if (!rootNote) {
+        throw new Error(
+            `no note at ${root}, so the corpus has no page to be read from`,
+        );
+    }
+
+    const reached = new Set([rootNote]);
+    const queue = [rootNote];
+    while (queue.length) {
+        const note = queue.shift();
+        if (stopAt(note)) continue;
+        for (const { target } of index.linksOf(note)) {
+            if (!target) continue;
+            const dest = index.resolve(note, target);
+            if (!dest || !scope(dest) || reached.has(dest)) continue;
+            reached.add(dest);
+            queue.push(dest);
+        }
+    }
+
+    return {
+        root: rootNote,
+        reached,
+        orphans: index.notes.filter((n) => scope(n) && !reached.has(n)),
+    };
+}
