@@ -37,7 +37,9 @@ describe("defineConfig", () => {
     it("returns a config carrying every field it was given", () => {
         const config = defineConfig({
             ...minimal(),
-            assets: [{ from: "assets/icons", to: "assets/icons" }],
+            packageBuild: {
+                assets: [{ from: "assets/icons", to: "assets/icons" }],
+            },
             publish: {
                 site: true,
                 manifests: { publish: true, consume: false },
@@ -63,19 +65,21 @@ describe("defineConfig", () => {
                 default: false,
             },
         ]);
-        expect(config.assets).toEqual([
-            { from: "assets/icons", to: "assets/icons" },
-        ]);
+        // Passed through uninterpreted: the shape is package-build's, and
+        // this validator deliberately does not know it.
+        expect(config.packageBuild).toEqual({
+            assets: [{ from: "assets/icons", to: "assets/icons" }],
+        });
         expect(config.publish).toEqual({
             site: true,
             manifests: { publish: true, consume: false },
         });
     });
 
-    it("defaults the asset list to empty and every publishing switch to off", () => {
+    it("defaults the reserved section to empty and every switch to off", () => {
         const config = defineConfig(minimal());
 
-        expect(config.assets).toEqual([]);
+        expect(config.packageBuild).toEqual({});
         expect(config.publish).toEqual({
             site: false,
             manifests: { publish: false, consume: false },
@@ -103,7 +107,7 @@ describe("defineConfig", () => {
         expect(Object.isFrozen(config.publish.manifests)).toBe(true);
         expect(Object.isFrozen(config.packs)).toBe(true);
         expect(Object.isFrozen(config.packs[0])).toBe(true);
-        expect(Object.isFrozen(config.assets)).toBe(true);
+        expect(Object.isFrozen(config.packageBuild)).toBe(true);
     });
 
     it("copies the input so later mutation cannot reach the config", () => {
@@ -184,10 +188,9 @@ describe("defineConfig", () => {
                 ],
             },
         ],
-        ["a non-array asset list", { ...minimal(), assets: {} }],
         [
-            "an asset with no destination",
-            { ...minimal(), assets: [{ from: "assets/icons" }] },
+            "a non-mapping packageBuild section",
+            { ...minimal(), packageBuild: [] },
         ],
         [
             "a non-boolean publishing switch",
@@ -422,5 +425,65 @@ describe("the package barrels", () => {
 
         expect(pkg.engine).toBeTypeOf("object");
         expect(pkg.sohl).toBeTypeOf("object");
+    });
+});
+
+describe("the reserved `packageBuild` section", () => {
+    // One repository describes itself in one file, so the two shared build
+    // packages share it — but they split by input, and neither should learn the
+    // other's schema. This validator checks that the section is a mapping and
+    // stops there.
+
+    it("passes an arbitrary section through untouched", () => {
+        const section = {
+            assets: [{ from: "assets/icons", to: "assets/icons" }],
+            deploy: { envPrefix: "SOHL" },
+            somethingInventedLater: { nested: [1, 2, 3] },
+        };
+        const config = defineConfig({ ...minimal(), packageBuild: section });
+
+        expect(config.packageBuild).toEqual(section);
+    });
+
+    it("does not key-check inside it, unlike every key around it", () => {
+        // A typo'd top-level key is a build failure; a key package-build has
+        // not heard of is package-build's to reject, not this module's.
+        expect(() =>
+            defineConfig({ ...minimal(), notAKey: true } as never),
+        ).toThrow(/notAKey/);
+        expect(() =>
+            defineConfig({
+                ...minimal(),
+                packageBuild: { notAPackageBuildKey: true },
+            }),
+        ).not.toThrow();
+    });
+
+    it("freezes it all the way down", () => {
+        // Read through the same immutable object as the rest of the config.
+        const config = defineConfig({
+            ...minimal(),
+            packageBuild: { assets: [{ from: "a", to: "b" }] },
+        });
+        const section = config.packageBuild as {
+            assets: { from: string; to: string }[];
+        };
+
+        expect(Object.isFrozen(section)).toBe(true);
+        expect(Object.isFrozen(section.assets)).toBe(true);
+        expect(Object.isFrozen(section.assets[0])).toBe(true);
+    });
+
+    it("copies rather than capturing, so a later mutation cannot reach it", () => {
+        const section: Record<string, unknown> = { assets: [] };
+        const config = defineConfig({ ...minimal(), packageBuild: section });
+
+        section.assets = [{ from: "sneaked", to: "in" }];
+
+        expect(config.packageBuild).toEqual({ assets: [] });
+    });
+
+    it("defaults to an empty mapping", () => {
+        expect(defineConfig(minimal()).packageBuild).toEqual({});
     });
 });

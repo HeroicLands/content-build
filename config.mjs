@@ -29,8 +29,9 @@
  * packs:
  *     - { name: items, type: Item, folders: item-folders.yaml }
  *     - { name: journals, type: JournalEntry, label: Journals }
- * assets:
- *     - { from: assets/icons, to: assets/icons }
+ * packageBuild:
+ *     assets:
+ *         - { from: assets/icons, to: assets/icons }
  * publish:
  *     site: true
  *     manifests: { publish: true, consume: true }
@@ -212,12 +213,25 @@ export const PACK_DOCUMENT_TYPES = /** @type {const} */ ([
  */
 
 /**
- * One asset copy the build performs, relative to the repository root and the
- * staged package root respectively.
+ * The section of the configuration belonging to `@heroiclands/package-build`.
  *
- * @typedef {object} AssetSpec
- * @property {string} from  Source path, relative to the repository root.
- * @property {string} to    Destination path, relative to the staged package root.
+ * **Opaque here, on purpose.** One repository describes itself in one file, so
+ * the two shared build packages share it — but they split by *input*, and
+ * neither should learn the other's schema. This validator checks only that the
+ * section is a mapping and hands it back frozen; package-build validates what
+ * is inside it, exactly as this module validates the keys around it.
+ *
+ * That is also why it is a section rather than a scatter of top-level keys: one
+ * reserved name keeps {@link ContentBuildConfig}'s unknown-key guard intact for
+ * everything else, which is the guard that catches a typo'd `packs` before it
+ * becomes an empty compendium.
+ *
+ * The values package-build needs that are *not* in here — `packageKind`,
+ * `foundryPackage` — it reads from the top level, where they already are. They
+ * were duplicated in each consumer's deploy script until this existed, which is
+ * two places for one fact.
+ *
+ * @typedef {Record<string, unknown>} PackageBuildSection
  */
 
 /**
@@ -298,7 +312,9 @@ export const PACK_DOCUMENT_TYPES = /** @type {const} */ ([
  * @property {string[]} [skipDirectories]   Directory names the content walk ignores
  *                                          wherever they appear (e.g. Obsidian's
  *                                          `Templates`). Default `[]`.
- * @property {AssetSpec[]} [assets]         Assets to stage. Default `[]`.
+ * @property {PackageBuildSection} [packageBuild]  Reserved for
+ *                                          `@heroiclands/package-build`, which
+ *                                          validates it. Not read here.
  * @property {PublishSwitchesInput} [publish]  Publishing switches. Each defaults to off.
  */
 
@@ -340,7 +356,8 @@ export const PACK_DOCUMENT_TYPES = /** @type {const} */ ([
  * @property {readonly string[]} packDirectories  Derived: every pack directory
  *                                     the build produces, in compile order —
  *                                     each pack followed by its companions.
- * @property {readonly Readonly<AssetSpec>[]} assets
+ * @property {Readonly<PackageBuildSection>} packageBuild  Passed through
+ *                                     frozen, uninterpreted. `{}` when absent.
  * @property {Readonly<PublishSwitches>} publish
  */
 
@@ -354,7 +371,7 @@ const CONFIG_KEYS = [
     "paths",
     "skipDirectories",
     "packs",
-    "assets",
+    "packageBuild",
     "publish",
 ];
 const ITEM_BUILDER_KEYS = ["system", "img", "fields"];
@@ -370,7 +387,6 @@ const PACK_KEYS = [
 ];
 const PATH_KEYS = Object.keys(DEFAULT_PATHS);
 const STATS_KEYS = ["systemId", "systemVersion", "lastModifiedBy"];
-const ASSET_KEYS = ["from", "to"];
 const PUBLISH_KEYS = ["site", "manifests"];
 const MANIFEST_KEYS = ["publish", "consume"];
 
@@ -565,20 +581,41 @@ function normalizeStats(value) {
 }
 
 /**
- * @param {unknown} value
- * @param {number} index
- * @returns {Readonly<AssetSpec>}
+ * Freeze a value and everything reachable from it.
+ *
+ * The reserved section is handed back frozen like every other part of the
+ * configuration, so package-build reads the same immutable object the rest of
+ * the toolchain does — but its *shape* is package-build's business, so this
+ * walks whatever is there rather than checking it against a key list.
+ *
+ * @param {unknown} value - Any value.
+ * @returns {unknown} The same value, deeply frozen.
  */
-function normalizeAsset(value, index) {
-    const where = `assets[${index}]`;
-    if (!isPlainObject(value)) fail(where, "must be an object");
-    const asset = /** @type {Record<string, unknown>} */ (value);
-    rejectUnknownKeys(asset, ASSET_KEYS, `${where}.`);
+function deepFreeze(value) {
+    if (value === null || typeof value !== "object") return value;
+    for (const inner of Object.values(value)) deepFreeze(inner);
+    return Object.freeze(value);
+}
 
-    return Object.freeze({
-        from: requireNonEmptyString(asset.from, `${where}.from`),
-        to: requireNonEmptyString(asset.to, `${where}.to`),
-    });
+/**
+ * Validate the reserved `packageBuild` section — that it is a mapping, and no
+ * more than that.
+ *
+ * @param {unknown} value - The section, or `undefined`.
+ * @returns {Readonly<PackageBuildSection>} It, frozen; `{}` when absent.
+ */
+function normalizePackageBuild(value) {
+    if (value === undefined) return Object.freeze({});
+    if (!isPlainObject(value)) {
+        fail(
+            "packageBuild",
+            "must be a mapping — it is the section @heroiclands/package-build " +
+                "reads, and that package validates what is inside it",
+        );
+    }
+    return /** @type {Readonly<PackageBuildSection>} */ (
+        deepFreeze(structuredClone(value))
+    );
 }
 
 /**
@@ -815,11 +852,6 @@ export function defineConfig(config) {
         requireNonEmptyString(name, `skipDirectories[${index}]`),
     );
 
-    if (input.assets !== undefined && !Array.isArray(input.assets)) {
-        fail("assets", "must be an array");
-    }
-    const assets = (input.assets ?? []).map(normalizeAsset);
-
     const foundryPackage = requireNonEmptyString(
         input.foundryPackage,
         "foundryPackage",
@@ -859,7 +891,7 @@ export function defineConfig(config) {
         skipDirectories: Object.freeze(skipDirectories),
         packs: Object.freeze(packs),
         packDirectories: Object.freeze(packDirectories),
-        assets: Object.freeze(assets),
+        packageBuild: normalizePackageBuild(input.packageBuild),
         publish: normalizePublish(input.publish),
     });
 }
