@@ -45,7 +45,7 @@ export * as frontmatter from "./frontmatter.mjs";
 /** The content walk's note census — the empty-tree guard's evidence. */
 export * as contentTree from "./content-tree.mjs";
 
-/** The consuming repository's resolved `content-build.config.mjs`. */
+/** The consuming repository's resolved `content-build.config.yaml`. */
 export * as packConfig from "./pack-config.mjs";
 
 /** Which pack of a document type a note's document lands in (#1566). */

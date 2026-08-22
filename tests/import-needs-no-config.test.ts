@@ -45,7 +45,7 @@ import path from "node:path";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
-import { CONFIG_FILENAME, findConfigFile } from "../engine/pack-config.mjs";
+import { CONFIG_BASENAME, findConfigFile } from "../engine/pack-config.mjs";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const PKG_ROOT = path.dirname(HERE);
@@ -210,7 +210,7 @@ describe("the shipped package needs no configuration to be imported (#2)", () =>
             probe,
         ]);
         expect(status, stderr).toBe(0);
-        expect(stdout).toContain(CONFIG_FILENAME);
+        expect(stdout).toContain(CONFIG_BASENAME);
         expect(stdout).toContain("CONTENT_BUILD_CONFIG");
     });
 });

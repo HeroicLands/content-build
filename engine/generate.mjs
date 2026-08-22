@@ -24,7 +24,7 @@
  * frontmatter (a `package:` matching the configured `contentPackage` + `type`),
  * so routing is directory-agnostic: a file lands in a pack because of its
  * `type`, not its location. Which packs exist, in what order, and which folder
- * hierarchy each one loads are all declared in `content-build.config.mjs`;
+ * hierarchy each one loads are all declared in `content-build.config.yaml`;
  * folder files live under the content root and are referenced from entry
  * frontmatter via `sohl.folder: <id>`.
  *
@@ -55,7 +55,7 @@ import { routerFor } from "./pack-router.mjs";
 /**
  * The compiler class for each Foundry document type a pack may hold.
  *
- * The pack list is data (`content-build.config.mjs`), so the one thing it
+ * The pack list is data (`content-build.config.yaml`), so the one thing it
  * cannot carry is the code that compiles it — a document type maps to its
  * compiler here. Unknown types fail the build rather than defaulting, so a pack
  * declaring a type nothing can compile is loud at the first pass instead of
@@ -207,7 +207,7 @@ export function emptyPassErrors(passes) {
                 `Pack "${pass.name}" compiled 0 entries from a non-empty ` +
                 `content tree. Every note was rejected — check that the notes ` +
                 `declare the package this build compiles (\`contentPackage\` in ` +
-                `content-build.config.mjs), or declare the pack ` +
+                `content-build.config.yaml), or declare the pack ` +
                 `\`mayBeEmpty\` if it genuinely ships nothing.`,
         );
 }

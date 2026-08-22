@@ -14,36 +14,42 @@
 /**
  * The per-repository configuration contract for `@heroiclands/content-build`.
  *
- * Every consuming repository declares one `content-build.config.mjs` at its
+ * Every consuming repository declares one `content-build.config.yaml` at its
  * root:
  *
- * ```js
- * import { defineConfig } from "@heroiclands/content-build";
- *
- * export default defineConfig({
- *     rootDir: import.meta.dirname,
- *     contentPackage: "sohl",
- *     foundryPackage: "sohl",
- *     packageKind: "systems",
- *     stats: {
- *         systemId: "sohl",
- *         systemVersion: "0.6.0",
- *         lastModifiedBy: "sohlbuilder00000",
- *     },
- *     skipDirectories: ["Templates"],
- *     packs: [
- *         { name: "items", type: "Item", folders: "item-folders.yaml" },
- *         { name: "journals", type: "JournalEntry", label: "Journals" },
- *     ],
- *     assets: [{ from: "assets/icons", to: "assets/icons" }],
- *     publish: { site: true, manifests: { publish: true, consume: true } },
- * });
+ * ```yaml
+ * contentPackage: sohl
+ * foundryPackage: sohl
+ * packageKind: systems
+ * stats:
+ *     systemId: sohl
+ *     lastModifiedBy: sohlbuilder00000
+ * itemBuilders: sohl
+ * skipDirectories: [Templates]
+ * packs:
+ *     - { name: items, type: Item, folders: item-folders.yaml }
+ *     - { name: journals, type: JournalEntry, label: Journals }
+ * assets:
+ *     - { from: assets/icons, to: assets/icons }
+ * publish:
+ *     site: true
+ *     manifests: { publish: true, consume: true }
  * ```
  *
  * `defineConfig` is the whole of the contract: it validates the object, fills
  * the optional halves with their defaults, and returns a deeply frozen copy.
  * It performs no I/O and knows nothing about any particular package's content —
  * a consumer's config is data, and the compilers read it.
+ *
+ * **This module validates; it does not load.** `engine/pack-config.mjs` is what
+ * finds a repository's configuration and reads it, and it is where the three
+ * fields absent from the YAML above are derived: `rootDir` (the directory the
+ * file sits in), `stats.systemVersion` (the adjacent `package.json`), and the
+ * `itemBuilders` table the name `sohl` stands for. All three are I/O or code,
+ * and this module is deliberately neither — which is also why a consumer whose
+ * item-builder registry is its own writes `content-build.config.mjs`, calling
+ * `defineConfig` below directly with a `rootDir` of `import.meta.dirname`.
+ * Both forms end here, so both are validated and frozen identically.
  *
  * **Configuration supplies paths, never captured values (#1508).** `rootDir`
  * anchors every path so the build reads the same files whatever directory it
@@ -716,11 +722,12 @@ function normalizePublish(value) {
 /**
  * Validate and normalize a content-build configuration.
  *
- * Consumers call this from `content-build.config.mjs` so that a malformed
- * configuration fails at load with a message naming the offending field,
- * rather than surfacing much later as an empty pack or a missing asset. The
- * returned object is a deeply frozen **copy**: mutating the input afterwards
- * cannot reach the configuration the build reads.
+ * Every configuration reaches this function — a YAML one through the loader in
+ * `engine/pack-config.mjs`, an `.mjs` one by calling it itself — so that a
+ * malformed configuration fails at load with a message naming the offending
+ * field, rather than surfacing much later as an empty pack or a missing asset.
+ * The returned object is a deeply frozen **copy**: mutating the input
+ * afterwards cannot reach the configuration the build reads.
  *
  * @param {ContentBuildConfigInput} config  The configuration to validate.
  * @returns {ContentBuildConfig}            The frozen, defaulted configuration.
