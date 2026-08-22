@@ -74,8 +74,14 @@ packs:
     companions:
       - { name: adventures, type: Adventure }
 
-assets:
-  - { from: assets/icons, to: assets/icons }
+# Reserved for @heroiclands/package-build, which validates what is inside it.
+# One repository describes itself in one file; the two build packages split by
+# input, and neither learns the other's schema. Values package-build needs that
+# already live at the top level — `packageKind`, `foundryPackage` — it reads
+# from there rather than restating them here.
+packageBuild:
+  assets:
+    - { from: assets/icons, to: assets/icons }
 
 # Three independent switches — every combination is real.
 publish:
@@ -84,8 +90,9 @@ publish:
 ```
 
 The loader validates the document, resolves every path against the directory
-the file sits in, fills the optional halves with their defaults (`assets: []`,
-`skipDirectories: []`, the conventional `paths`, every publishing switch off),
+the file sits in, fills the optional halves with their defaults
+(`skipDirectories: []`, `packageBuild: {}`, the conventional `paths`, every
+publishing switch off),
 derives `assetRoot`, `packDirectories`, `itemTypes` and `docEntryTypes`, and
 freezes the result. A malformed configuration throws a `TypeError` naming the
 offending field, so it fails at load rather than as an empty pack much later.
