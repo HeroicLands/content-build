@@ -426,6 +426,40 @@ addressing itself, or a declared `dependency` — and checks the converse: nothi
 shipped may import a `devDependency`, and no declared dependency may go
 unimported.
 
+## Releasing
+
+Releasing is not a command anyone runs. It is a consequence of merging, in two
+steps, and each step is visible while it is pending.
+
+**Every pull request declares its bump.** Run `npx changeset` and pick
+major/minor/patch; the summary you write becomes the changelog entry and the
+release note. If the change ships nothing a consumer can see, say so explicitly
+with `npx changeset add --empty`. CI's **Changeset declared** job fails a pull
+request that declares neither — `npm run changeset:check` is the same check,
+locally.
+
+**Merging to `main` opens a Version Packages pull request** carrying the version
+bump and the rewritten `CHANGELOG.md`. That pull request _is_ the pending
+release: as long as something is merged but unpublished, there is an open pull
+request saying so. This is the whole point of the pipeline — the previous,
+hand-driven process failed by leaving _nothing_ behind when the final step was
+forgotten, and on 2026-08-21 it did exactly that for two versions (#15).
+
+**Merging that publishes.** `changeset publish` puts the version on npm through
+Trusted Publishing (OIDC — there is no `NPM_TOKEN`), tags the commit `v<version>`
+and cuts the GitHub Release with the changelog section as its body. It publishes
+only versions that are not already on the registry, so re-running it is a no-op;
+`workflow_dispatch` on **Publish to npm** is the recovery path if a run fails
+after versioning.
+
+Below 1.0.0, `^0.x` never crosses a minor — a consumer on `^0.15.0` will not see
+`0.16.0` until it bumps the pin deliberately. Dependabot raises that as its own
+pull request in each of the three consuming repositories.
+
+> After a successful publish, `npm view @heroiclands/content-build version` can
+> report the _previous_ version for a minute or so. `dist-tags` is correct
+> immediately, and is what the workflow prints.
+
 ## License
 
 GPL-3.0-or-later — see the
