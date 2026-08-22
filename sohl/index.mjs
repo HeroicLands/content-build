@@ -21,7 +21,7 @@
  * that builds journals, macros, and scenes never receives `buildWeaponGear`.
  *
  * A consuming repository hands its own registry to the engine as configuration
- * — `itemBuilders` in `content-build.config.mjs` — which is how the engine
+ * — `itemBuilders` in `content-build.config.yaml` — which is how the engine
  * composes the one doc-carrying-type set without holding any package's data
  * model.
  *

@@ -147,7 +147,7 @@ export function createPackRouter(packs) {
                 throw new PackRoutingError(
                     `${noteLabel(fm)} declares \`pack: ${declared}\`, which no ` +
                         `configured pack answers to. Declare it in ` +
-                        `content-build.config.mjs, or correct the note. ` +
+                        `content-build.config.yaml, or correct the note. ` +
                         `Packs of type ${docType}: ` +
                         `${(byType.get(docType) ?? []).join(", ") || "(none)"}.`,
                 );

@@ -14,7 +14,7 @@
 /**
  * The Foundry-package-id drift guard.
  *
- * {@link foundryPackageId} is *configured* in `content-build.config.mjs`
+ * {@link foundryPackageId} is *configured* in `content-build.config.yaml`
  * rather than read from the manifest, so the link resolver stays filesystem-free and
  * unit-testable — which means nothing keeps it in step with the `id` the
  * repository actually ships. Every compendium UUID the compilers emit takes its
@@ -128,7 +128,7 @@ export function readPackageManifest(templateDir = defaultTemplateDir()) {
  * Pure: it compares two strings and knows nothing about the filesystem, so the
  * drift rule can be exercised directly in a unit test.
  *
- * @param {string} configuredId - `foundryPackage` from `content-build.config.mjs`.
+ * @param {string} configuredId - `foundryPackage` from `content-build.config.yaml`.
  * @param {string|undefined} manifestId - The `id` field of the package manifest.
  * @param {object} [opts]
  * @param {string} [opts.manifestPath] - The manifest to name in the error.
@@ -142,7 +142,7 @@ export function assertPackageIdMatchesManifest(
     if (!configuredId) {
         throw new Error(
             "The configured `foundryPackage` is empty — set it in " +
-                "content-build.config.mjs. " +
+                "content-build.config.yaml. " +
                 "It is the first segment of every compendium UUID the pack " +
                 "compilers emit and must name the shipped Foundry package.",
         );
@@ -158,7 +158,7 @@ export function assertPackageIdMatchesManifest(
     if (configuredId !== manifestId) {
         throw new Error(
             `Foundry package id drift: \`foundryPackage\` is "${configuredId}" ` +
-                `(\`foundryPackage\` in content-build.config.mjs), but ` +
+                `(\`foundryPackage\` in content-build.config.yaml), but ` +
                 `${manifestPath} declares "${manifestId}". Every compendium UUID ` +
                 "takes its first segment from it, so compiling " +
                 "now would emit documents addressing a package this repository " +

@@ -18,7 +18,7 @@
  * The public surface is deliberately small:
  *
  * - {@link defineConfig} — the per-repository configuration contract. A
- *   consumer's whole build is one `content-build.config.mjs` calling it.
+ *   consumer's whole build is one `content-build.config.yaml` calling it.
  * - {@link engine} — package-agnostic machinery: the content walk, frontmatter,
  *   tables, wikilinks, ids, folders, the link manifest and web-address rule,
  *   `BasePackCompiler`, and the generic Foundry document compilers.

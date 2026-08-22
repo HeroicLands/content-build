@@ -25,10 +25,12 @@
  *
  * **The registry itself is a consumer's, and stays a leaf.** SoHL's lives in
  * `@heroiclands/content-build/sohl/item-builders`; the consumer names it in
- * `content-build.config.mjs`. That module must never read the resolved
- * configuration — the config file imports it, so a read from there would close
- * a cycle around the config's own evaluation. Data travels *into*
- * configuration; only modules like this one, which nothing in a config file
+ * `content-build.config.yaml`. That module must never read the resolved
+ * configuration — it is loaded *during* the resolution such a read would be
+ * asking for, whether the loader requires it by name for a data config or a
+ * code config imports it directly, so a read from there would close a cycle
+ * around the configuration's own evaluation. Data travels *into*
+ * configuration; only modules like this one, which nothing on that path
  * imports, read back out of it.
  *
  * @module
@@ -77,7 +79,7 @@ export function itemBuilder(type) {
         throw new Error(
             `No builder registered for item type "${type}" — add one to the ` +
                 `\`itemBuilders\` registry this repository declares in ` +
-                `content-build.config.mjs, or stop declaring the type.`,
+                `content-build.config.yaml, or stop declaring the type.`,
         );
     }
     return /** @type {(fm: object) => object} */ (builder);
@@ -117,7 +119,7 @@ export function itemArt(type) {
         throw new Error(
             `No default art for item type "${type}" — the note carries no ` +
                 `\`img:\`, and the \`itemBuilders\` entry for "${type}" in this ` +
-                `repository's content-build.config.mjs pairs none with its ` +
+                `repository's content-build.config.yaml pairs none with its ` +
                 `builder. Write the entry as ` +
                 `\`${type}: { system: <builder>, img: "<path>" }\`, or give the ` +
                 `note an \`img:\` of its own.`,

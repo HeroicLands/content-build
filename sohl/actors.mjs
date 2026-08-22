@@ -278,7 +278,7 @@ export class Actors extends BasePackCompiler {
                 "Actors compiler requires `itemsSourceDirs` — the generated JSON " +
                     "of every Item pack, which each being's embedded items are " +
                     "resolved against. Declare at least one pack of type " +
-                    '"Item" in content-build.config.mjs.',
+                    '"Item" in content-build.config.yaml.',
             );
         }
         Object.defineProperty(this, "itemsSourceDirs", {

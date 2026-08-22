@@ -45,7 +45,7 @@
  * its type ships in more than one pack.
  *
  * **This is the extension point.** The pack list is data
- * (`content-build.config.mjs`) and each entry names a document type; a consumer
+ * (`content-build.config.yaml`) and each entry names a document type; a consumer
  * adding a document type this toolchain does not ship writes a subclass of this
  * and registers it, rather than copying a pass and editing it. The contract the
  * generator relies on stays small: construct, `await compile()`, read

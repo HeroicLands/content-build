@@ -24,12 +24,12 @@
  *
  * The side effects that need *configuration* live inside the command handler,
  * not at module scope, so `--version` and `--help` answer in a directory that
- * has neither a `content-build.config.mjs` nor a package manifest (#2).
+ * has neither a `content-build.config.yaml` nor a package manifest (#2).
  * Running an actual command still resolves both, and still fails loudly when
  * either is missing.
  *
  * Every path and pack name it hands the library comes from the consuming
- * repository's `content-build.config.mjs` (#1508), located by
+ * repository's `content-build.config.yaml` (#1508), located by
  * `engine/pack-config.mjs`; nothing about any one repository's layout is
  * written here.
  *
@@ -188,7 +188,7 @@ function docsCommand() {
  * Deliberately independent of the pack pipeline: it compiles nothing, opens no
  * LevelDB and needs no Foundry manifest, so it runs in a second and can gate a
  * commit. The content root comes from the consuming repository's
- * `content-build.config.mjs` unless one is named on the command line, so the
+ * `content-build.config.yaml` unless one is named on the command line, so the
  * usual invocation takes no arguments at all.
  *
  * @returns {object} The yargs command module.

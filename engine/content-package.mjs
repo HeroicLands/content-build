@@ -13,7 +13,7 @@
 
 /**
  * Which package's notes this repository compiles, and which Foundry package
- * ships them — read from the repository's `content-build.config.mjs`.
+ * ships them — read from the repository's `content-build.config.yaml`.
  *
  * Both values are **derived**, not declared: `config.mjs` is the single place
  * the configuration is resolved (#1508). This module survives as the import

@@ -23,84 +23,122 @@ npm install -D @heroiclands/content-build
 
 ## Configure
 
-A consuming repository declares one `content-build.config.mjs` at its root:
+A consuming repository declares one `content-build.config.yaml` at its root:
+
+```yaml
+# The value each content note carries in its `package:` frontmatter.
+contentPackage: thalorna
+# The Foundry package id, as it appears in system.json / module.json.
+foundryPackage: sohl-thalorna
+# Where Foundry installs it: "systems" or "modules". Also decides the served
+# asset root a note's `img:` resolves to — `modules/sohl-thalorna/assets/…`.
+packageKind: modules
+
+# Stamped into every compiled document's `_stats`. `coreVersion` is absent on
+# purpose: it is read from the manifest's `compatibility.minimum`. So is
+# `systemVersion` — it is read from the `package.json` beside this file, and is
+# stated here only by a repository shipping content for a version that is not
+# its own.
+stats:
+  systemId: sohl
+  lastModifiedBy: thalornabuild000
+
+# Which content types compile into Items, and what builds each one's `system`
+# block — named, because the registry is code. The registry's keys are the
+# accepted item types, so a type cannot be whitelisted without a builder behind
+# it. A module that ships no items omits this key. See "An item type's default
+# art" below, and "A registry of your own" for the `.mjs` form.
+itemBuilders: sohl
+
+# Directory names the content walk ignores wherever they appear.
+skipDirectories: [Templates]
+
+# Optional; each path is relative to this file's directory and defaults to the
+# conventional layout shown here.
+paths:
+  content: assets/content
+  packageManifest: assets/templates
+  manifests: assets/manifests
+  packJson: build/packs-json
+  stage: build/stage/packs
+  unpack: build/tmp/packs
+
+# The one pack list. Order is load-bearing where one pass reads another's
+# output, and `packDirectories` is derived from it.
+packs:
+  - { name: items, type: Item, label: Items, folders: item-folders.yaml }
+  - { name: journals, type: JournalEntry, label: Journals }
+  # A companion is written by its parent's pass rather than one of its own.
+  - name: scenes
+    type: Scene
+    companions:
+      - { name: adventures, type: Adventure }
+
+assets:
+  - { from: assets/icons, to: assets/icons }
+
+# Three independent switches — every combination is real.
+publish:
+  site: true
+  manifests: { publish: true, consume: true }
+```
+
+The loader validates the document, resolves every path against the directory
+the file sits in, fills the optional halves with their defaults (`assets: []`,
+`skipDirectories: []`, the conventional `paths`, every publishing switch off),
+derives `assetRoot`, `packDirectories`, `itemTypes` and `docEntryTypes`, and
+freezes the result. A malformed configuration throws a `TypeError` naming the
+offending field, so it fails at load rather than as an empty pack much later.
+
+**Three values are derived rather than authored**, because each is something a
+file can be asked for rather than told:
+
+| Field                 | Derived from                                                               |
+| --------------------- | -------------------------------------------------------------------------- |
+| `rootDir`             | the directory the configuration file sits in — authoring it is an error    |
+| `stats.systemVersion` | the `version` in the adjacent `package.json`, unless the config states one |
+| `itemBuilders`        | the named registry (`sohl`), required lazily so importing costs nothing    |
+
+`rootDir` is rejected rather than honoured: any absolute path a data file wrote
+would be one machine's, and the build would then read a tree that exists only
+there. `systemVersion` follows `package.json` because a transcribed copy of it
+froze at `0.6.0` for four releases before anyone noticed.
+
+### A registry of your own
+
+`itemBuilders` is the one part of the contract that is code — a table of
+functions building each type's `system` block — so data can only _name_ one of
+the registries this package ships. A consumer supplying its own writes
+`content-build.config.mjs` instead, which is loaded in place of the YAML:
 
 ```js
-import path from "node:path";
-import { fileURLToPath } from "node:url";
-// The *leaf* contract module, never the package root barrel — see the note
-// below.
 import { defineConfig } from "@heroiclands/content-build/config";
-import { ITEM_BUILDERS } from "@heroiclands/content-build/sohl/item-builders";
+import { ITEM_BUILDERS } from "./build/item-builders.mjs";
 
 export default defineConfig({
-  // Anchors every configured path, so the build reads the same files whatever
-  // directory it was launched from.
-  rootDir: path.dirname(fileURLToPath(import.meta.url)),
-  // The value each content note carries in its `package:` frontmatter.
-  contentPackage: "thalorna",
-  // The Foundry package id, as it appears in system.json / module.json.
-  foundryPackage: "sohl-thalorna",
-  // Where Foundry installs it: "systems" or "modules". Also decides the served
-  // asset root a note's `img:` resolves to — `modules/sohl-thalorna/assets/…`.
+  rootDir: import.meta.dirname, // stated, since nothing derives it here
+  contentPackage: "kethira",
+  foundryPackage: "sohl-kethira-basic",
   packageKind: "modules",
-  // Stamped into every compiled document's `_stats`. `coreVersion` is absent on
-  // purpose: it is read from the manifest's `compatibility.minimum`.
-  stats: {
-    systemId: "sohl",
-    systemVersion: "0.1.0",
-    lastModifiedBy: "thalornabuild000",
-  },
-  // Which content types compile into Items, and what builds each one's
-  // `system` block. The keys are the accepted item types, so a type cannot be
-  // whitelisted without a builder behind it. A module that ships no items
-  // declares none. An entry may also pair the type's default art — see
-  // "An item type's default art" below.
+  stats: { systemId: "sohl", systemVersion: "0.6.0", lastModifiedBy: "…" },
   itemBuilders: ITEM_BUILDERS,
-  // Directory names the content walk ignores wherever they appear.
-  skipDirectories: ["Templates"],
-  // Optional; each path is relative to `rootDir` and defaults to the
-  // conventional layout shown here.
-  paths: {
-    content: "assets/content",
-    packageManifest: "assets/templates",
-    manifests: "assets/manifests",
-    packJson: "build/packs-json",
-    stage: "build/stage/packs",
-    unpack: "build/tmp/packs",
-  },
-  // The one pack list. Order is load-bearing where one pass reads another's
-  // output, and `packDirectories` is derived from it.
-  packs: [
-    {
-      name: "items",
-      type: "Item",
-      label: "Items",
-      folders: "item-folders.yaml",
-    },
-    { name: "journals", type: "JournalEntry", label: "Journals" },
-    // A companion is written by its parent's pass rather than one of its own.
-    {
-      name: "scenes",
-      type: "Scene",
-      companions: [{ name: "adventures", type: "Adventure" }],
-    },
-  ],
-  assets: [{ from: "assets/icons", to: "assets/icons" }],
-  // Three independent switches — every combination is real.
-  publish: {
-    site: true,
-    manifests: { publish: true, consume: true },
-  },
+  packs: [{ name: "items", type: "Item" }],
 });
 ```
 
-`defineConfig` validates the object, resolves every path against `rootDir`,
-fills the optional halves with their defaults (`assets: []`, `skipDirectories:
-[]`, the conventional `paths`, every publishing switch off), derives `assetRoot`,
-`packDirectories`, `itemTypes` and `docEntryTypes`, and returns a deeply frozen
-copy. A malformed configuration throws a `TypeError` naming the offending field,
-so it fails at load rather than as an empty pack much later.
+The two forms end at the same `defineConfig`, so they are validated and frozen
+identically; a code config simply states the three fields above itself, which it
+can, because it is code. **Import `defineConfig` from
+`@heroiclands/content-build/config`, never from the package root** — the root
+barrel pulls in the compilers, the compilers read the resolved configuration,
+and resolving it loads this file, so importing the barrel here closes a cycle
+around the file's own evaluation. The `/config` entry point imports nothing but
+`node:path` and the id helpers, so it cannot.
+
+**One directory, one configuration.** A directory holding both a `.yaml` and an
+`.mjs` is an error, not a precedence question: picking one would let a
+repository mid-conversion build from the file its author is no longer editing,
+and look entirely healthy doing it.
 
 ### Several packs of one document type
 
@@ -117,12 +155,11 @@ Two axes, deliberately orthogonal:
 - a note's **`pack:`** frontmatter selects _which pack of that type_ receives its
   document.
 
-```js
-packs: [
-  { name: "characteristics", type: "Item", default: true },
-  { name: "mysteries", type: "Item" },
-  { name: "journals", type: "JournalEntry" },
-],
+```yaml
+packs:
+  - { name: characteristics, type: Item, default: true }
+  - { name: mysteries, type: Item }
+  - { name: journals, type: JournalEntry }
 ```
 
 ```yaml
@@ -160,20 +197,15 @@ pack: mysteries
   it — an item's or a macro's prose, which compiles into a JournalEntry of its
   own — lands in the default pack of _that_ type.
 
-**Import `defineConfig` from `@heroiclands/content-build/config`, never from the
-package root.** `engine/pack-config.mjs` finds this file by walking up from
-itself — so it works from `packages/` and from `node_modules/` alike, and does
-not depend on the directory the build was launched from — and then loads it. The
-root barrel pulls in the compilers, and the compilers read that resolved
-configuration, so a config file that imports the barrel closes a cycle around its
-own evaluation. The `/config` entry point imports nothing but `node:path` and the
-id helpers, so it cannot. `ITEM_BUILDERS` is imported from its own leaf entry
-point for the same reason. Set `CONTENT_BUILD_CONFIG` to point at the file
-explicitly if a consumer keeps it somewhere else.
+**The configuration is found by walking up, not from the working directory.**
+`engine/pack-config.mjs` climbs from itself — so it works from `packages/` and
+from `node_modules/` alike, and does not depend on the directory the build was
+launched from. Set `CONTENT_BUILD_CONFIG` to point at the file explicitly if a
+consumer keeps it somewhere else.
 
 **The configuration is resolved on first read, never at import.** Every module
 here can be imported — and `content-build --version` and `--help` answered — in a
-directory with no `content-build.config.mjs` and no Foundry package manifest, so
+directory with no `content-build.config.yaml` and no Foundry package manifest, so
 a consumer can reach for one pure helper (`engine/content-slug`,
 `engine/wikilinks`) without standing up a pack build. Anything derived from
 configuration is therefore an accessor rather than a hoisted constant —
@@ -183,10 +215,10 @@ the same explicit message as before, the moment a build actually needs a value i
 cannot find. Absence is still a hard failure; only the moment it is reported
 moved (#2).
 
-The file is loaded with `require`, so that reading a configured value stays an
-ordinary synchronous expression instead of making every module downstream of it
-an async one. The one shape that cannot be loaded is a config whose own module
-graph uses top-level `await`, which is reported as such.
+The file is read synchronously — an `.mjs` one with `require` — so that reading
+a configured value stays an ordinary expression instead of making every module
+downstream of it an async one. The one shape that cannot be loaded is an `.mjs`
+config whose own module graph uses top-level `await`, which is reported as such.
 
 **`itemBuilders` is how the engine learns a consumer's item types without
 holding its data model.** `itemTypes` is its key set, and `docEntryTypes` — every
@@ -240,7 +272,7 @@ item with a mismatched icon:
 
 ```
 No default art for item type "relic" — the note carries no `img:`, and the
-`itemBuilders` entry for "relic" in this repository's content-build.config.mjs
+`itemBuilders` entry for "relic" in this repository's configuration
 pairs none with its builder.
 ```
 
