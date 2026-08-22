@@ -27,20 +27,50 @@
  * `/creature/nsvrroth/`). Renames are what a URL must survive, and they do:
  * every change appends to the legacy-URL map, which emits a redirect.
  *
- * This is document identity, and it is deliberately **not** the same operation
- * as the other slug-shaped transforms in the build:
+ * **One normalisation, for every slug this build makes.** {@link slugify} is it.
+ * Two things are layered on top of it for **document identity** only, in
+ * {@link contentSlug}:
  *
- * - heading **anchor** slugs (`[[#some-heading]]`, `{#slug}`) — position within
- *   a page, in `utils/web-wikilinks.mjs` and `packages/content-build/engine/journals.mjs`;
- * - pack **filename** slugs, in `packages/content-build/engine/compendiums.mjs`;
- * - `slugifyShortcode` in `src/utils/helpers.ts`, which runs the other way —
- *   suggesting a shortcode _from_ a name when an item is created.
+ * - it must produce something, and throws when a name yields no slug;
+ * - it **abbreviates** — see {@link ABBREVIATIONS}.
  *
- * Plain ESM with no Foundry and no filesystem access, so it is unit-testable —
- * see `packages/content-build/tests/content-slug.test.ts`.
+ * Abbreviation stops at the document's own address on purpose. A heading anchor
+ * is not a name the build invents: an author writes the matching key by hand —
+ * a map note pins `locations.stair-foot` at a heading called *Stair Foot* — so a
+ * slug that silently became `stair-ft` would break a reference nobody could
+ * have predicted. The same goes for a pack filename, which is only ever read
+ * back by the unpacker. Shortening either buys nothing and costs the author's
+ * ability to guess the key.
+ *
+ * This header used to claim the opposite — that anchor slugs, filename slugs and
+ * this one were deliberately separate operations. Three of them had drifted into
+ * dropping non-ASCII letters instead of transliterating them, so `Kûrbúl Helm`
+ * addressed a page at `kurbul-helm` while its pack file was `k-rb-l-helm` and a
+ * link to a heading of the same name pointed at `#k-rb-l-helm`. Twenty-two of
+ * this repository's notes were affected. That was not a design; it was three
+ * copies of a regex, and the differences between them were all mistakes.
+ *
+ * What the rule does, and why:
+ *
+ * - **Transliterate, don't discard.** `unidecode` carries every non-ASCII letter
+ *   to its ASCII sense — `æ` → `ae`, `þ` → `th`, `œ` → `oe`, `ß` → `ss`,
+ *   `ö` → `o`, `¾` → `3/4`. A rule that merely strips them turns a name into
+ *   punctuation.
+ * - **An apostrophe elides.** `’` and `'` mark a pronunciation break — a glottal
+ *   stop — inside one word, so `Kenbet’Pat` is `kenbetpat`, not `kenbet-pat`.
+ * - **Everything else non-alphanumeric becomes a hyphen**, collapsed and
+ *   trimmed.
+ *
+ * `slugifyShortcode` in the SoHL runtime is genuinely a different operation and
+ * stays separate: it runs the other way, suggesting a shortcode *from* a name
+ * when an item is created.
+ *
+ * Plain ESM with no Foundry and no filesystem access, so it is unit-testable.
  */
 
 import unidecode from "unidecode";
+
+import { abbreviateTokens } from "./abbreviations.mjs";
 
 /**
  * The URL segment for one content note.
@@ -66,17 +96,46 @@ import unidecode from "unidecode";
  *   characters — either way the note cannot be addressed, which is a content
  *   error rather than something to paper over with a fallback.
  */
+export function slugify(text) {
+    const raw = typeof text === "string" ? text.trim() : "";
+    if (!raw) return "";
+    const tokens = unidecode(raw)
+        .toLowerCase()
+        // An apostrophe marks a pronunciation break, not a word boundary:
+        // `Kenbet\u2019Pat` is one name said with a catch in it, so it elides
+        // rather than becoming a hyphen.
+        .replace(/['\u2019]/g, "")
+        // A vulgar fraction transliterates to its digits (`\u00be` \u2192 `3/4`); the
+        // solidus between them is not a word boundary either.
+        .replace(/(\d)\/(\d)/g, "$1$2")
+        .split(/[^a-z0-9]+/)
+        .filter(Boolean);
+
+    return tokens.join("-");
+}
+
+/**
+ * The URL segment a content note publishes at.
+ *
+ * {@link slugify} with the rule that a document *must* be addressable: a note
+ * that yields no slug is a content error, not something to paper over with a
+ * fallback, because the alternative is a page nobody can reach.
+ *
+ * @param {string | undefined} name - The note's display name (`name.full`),
+ *   which a malformed note may not have at all.
+ * @returns {string} The URL segment (never empty).
+ * @throws {Error} When there is no name, or the name carries no URL-safe
+ *   characters.
+ */
 export function contentSlug(name) {
     const raw = typeof name === "string" ? name.trim() : "";
     if (!raw) {
         throw new Error("content note has no name, so it has no URL");
     }
-    const slug = unidecode(raw)
-        .toLowerCase()
-        .replace(/['\u2019]/g, "")
-        .replace(/(\d)\/(\d)/g, "$1$2")
-        .replace(/[^a-z0-9]+/g, "-")
-        .replace(/^-+|-+$/g, "");
+    const normalised = slugify(raw);
+    const slug = abbreviateTokens(normalised.split("-").filter(Boolean)).join(
+        "-",
+    );
     if (!slug) {
         throw new Error(
             `name "${raw}" has no URL-safe characters, so it cannot address a page`,

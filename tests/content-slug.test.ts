@@ -44,9 +44,10 @@ describe("contentSlug", () => {
     });
 
     it("keeps a fraction's digits together", () => {
+        // `kurbul` and `plate` abbreviate; the point here is the fraction.
         // `¾` transliterates to `3/4`; the solidus must not split it into `3-4`.
-        expect(contentSlug("Kûrbúl ¾-Helm")).toBe("kurbul-34-helm");
-        expect(contentSlug("Plate ½-Helm")).toBe("plate-12-helm");
+        expect(contentSlug("Kûrbúl ¾-Helm")).toBe("kbl-34-helm");
+        expect(contentSlug("Plate ½-Helm")).toBe("plt-12-helm");
         // A slash that is not between digits is still a separator.
         expect(contentSlug("Armor/Clothing")).toBe("armor-clothing");
     });

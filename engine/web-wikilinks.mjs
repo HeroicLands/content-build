@@ -38,14 +38,17 @@
 // shortcode and the knowledgebase as a name (#1409).
 import { readQualifier } from "./wikilinks.mjs";
 import { replaceOutsideCode } from "./code-fences.mjs";
+// One slug rule for the whole build — see `./content-slug.mjs`. This module
+// carried a copy that dropped non-ASCII letters rather than transliterating
+// them, so a link to a heading named `Kûrbúl Helm` pointed at `#k-rb-l-helm`.
+import { slugify } from "./content-slug.mjs";
+
+// Re-exported so a site build keeps one import path for the whole of link
+// resolution: the same rule that names a page also names an anchor within it.
+export { slugify };
 import { WIKILINK, isSamePage, parseWikilink } from "./wikilink-syntax.mjs";
 
 /** KB heading/anchor slug: lowercase, non-alphanumerics to single hyphens. */
-export const slugify = (s) =>
-    String(s)
-        .toLowerCase()
-        .replace(/[^a-z0-9]+/g, "-")
-        .replace(/(^-|-$)/g, "");
 
 /**
  * Whether a link target addresses a document as `type-shortcode` (or the legacy
