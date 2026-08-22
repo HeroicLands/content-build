@@ -44,6 +44,11 @@ import log from "loglevel";
 import path from "path";
 import { compilePack, extractPack } from "@foundryvtt/foundryvtt-cli";
 import { generatePacksJson, packJsonDir } from "./generate.mjs";
+// The one slug rule — see `./content-slug.mjs`. This module carried a copy
+// that stripped only the *first* straight apostrophe (a string argument, not a
+// pattern), never a curly one, and dropped non-ASCII letters rather than
+// transliterating them: `Kûrbúl Helm` filed itself as `k-rb-l-helm`.
+import { slugify } from "./content-slug.mjs";
 import { verifyPackSceneLevels } from "./scene-levels.mjs";
 import { loadPackConfig } from "./pack-config.mjs";
 
@@ -345,18 +350,4 @@ export async function unpackPacks({
             },
         });
     }
-}
-
-/**
- * Standardize name format.
- * @param {string} name
- * @returns {string}
- */
-function slugify(name) {
-    return name
-        .toLowerCase()
-        .replace("'", "")
-        .replace(/[^a-z0-9]+/gi, " ")
-        .trim()
-        .replace(/\s+|-{2,}/g, "-");
 }

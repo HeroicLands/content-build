@@ -221,13 +221,6 @@ export function makeFilename(name, id) {
  * Standardize a name into a slug: lowercase, apostrophes removed,
  * non-alphanumerics collapsed to single hyphens.
  */
-export function slugify(name) {
-    return String(name)
-        .toLowerCase()
-        .replace(/['’]/g, "")
-        .replace(/[^a-z0-9]+/g, "-")
-        .replace(/^-+|-+$/g, "");
-}
 
 /**
  * Translate a content-relative image path into its Foundry-relative form.
@@ -381,6 +374,9 @@ export function defaultStats() {
  * resolver this one imports can derive ids too — and re-exported here for the
  * passes that have always reached it through `helpers`.
  */
+// The one slug rule, re-exported so callers keep a single import path.
+export { slugify } from "./content-slug.mjs";
+
 export { makeId } from "./ids.mjs";
 
 // The content-type → document-type map, which decides *which* pack list a

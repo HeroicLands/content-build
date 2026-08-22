@@ -91,6 +91,9 @@ import {
 } from "./ids.mjs";
 import { hasDocEntry, itemDocEntryId } from "./item-docs.mjs";
 import { replaceOutsideCode } from "./code-fences.mjs";
+// The syntax lives in `./wikilink-syntax.mjs`, so the web resolver and this
+// one cannot disagree about what counts as a link.
+import { WIKILINK, parseWikilink } from "./wikilink-syntax.mjs";
 
 export { ITEM_PACK, PACK_BY_TYPE, packForType };
 
@@ -449,7 +452,6 @@ function unresolvedLink(text, target) {
 }
 
 /** Matches a whole wikilink, capturing its inner text. */
-const WIKILINK = /\[\[([^\]\n]+)\]\]/g;
 
 /**
  * Rewrites every wikilink in a markdown body as a Foundry UUID enricher.
@@ -492,23 +494,13 @@ export function convertWikilinks(markdown, { type, id, pack, docPack, index }) {
         markdown,
         WIKILINK,
         (all, rawInner, offset) => {
-            // A pipe inside a table cell is escaped as `\|`; undo that first.
-            const inner = rawInner.replace(/\\\|/g, "|");
-            const bar = inner.indexOf("|");
-            let target = (bar === -1 ? inner : inner.slice(0, bar)).trim();
-            const labelled = bar !== -1;
-            let text = (labelled ? inner.slice(bar + 1) : inner).trim();
-
-            // Split off a section slug.
-            let slug = null;
-            const hash = target.indexOf("#");
-            if (hash === 0) {
-                slug = target.slice(1).trim();
-                target = "";
-            } else if (hash > 0) {
-                slug = target.slice(hash + 1).trim();
-                target = target.slice(0, hash).trim();
-            }
+            const parsed = parseWikilink(rawInner);
+            const { labelled } = parsed;
+            let target = parsed.target;
+            // An unlabelled link shows its interior verbatim, anchor included;
+            // a labelled one shows its label.
+            let text = labelled ? (parsed.display ?? "") : parsed.inner;
+            const slug = parsed.anchor || null;
 
             // Resolve the document: same-page (empty target), type-shortcode, or alias.
             let doc;
