@@ -15,6 +15,7 @@ import {
     anchorsOf,
     auditLinks,
     buildLinkIndex,
+    walkReachability,
 } from "../engine/content-links.mjs";
 
 /** A throwaway content tree, described as `{ relPath: contents }`. */
@@ -244,5 +245,107 @@ describe("auditLinks", () => {
         });
         expect(r.deadAnchors).toEqual([]);
         expect(r.deadAddresses).toEqual([]);
+    });
+});
+
+describe("walkReachability", () => {
+    /** A corpus of `doc` notes under `Guide/`, linked as described. */
+    const guide = (files: Record<string, string>) =>
+        buildLinkIndex(tree(files), { skipDirectories: [] });
+
+    const scope = (n: any) => n.rel.startsWith("Guide/");
+
+    it("reaches every page linked from the root, transitively", () => {
+        const index = guide({
+            "Guide/README.md": note(
+                { type: "doc", shortcode: "root" },
+                "See [[doc-one]].",
+            ),
+            "Guide/One.md": note(
+                { type: "doc", shortcode: "one" },
+                "Then [[doc-two]].",
+            ),
+            "Guide/Two.md": note({ type: "doc", shortcode: "two" }),
+        });
+        const r = walkReachability(index, { root: "Guide/README.md", scope });
+        expect(r.orphans).toEqual([]);
+        expect(r.reached.size).toBe(3);
+    });
+
+    // The defect this exists to catch: a page that compiles and publishes but
+    // cannot be arrived at by reading.
+    it("reports a page nothing links to", () => {
+        const index = guide({
+            "Guide/README.md": note(
+                { type: "doc", shortcode: "root" },
+                "See [[doc-one]].",
+            ),
+            "Guide/One.md": note({ type: "doc", shortcode: "one" }),
+            "Guide/Orphan.md": note({ type: "doc", shortcode: "orphan" }),
+        });
+        const r = walkReachability(index, { root: "Guide/README.md", scope });
+        expect(r.orphans.map((o: any) => o.rel)).toEqual(["Guide/Orphan.md"]);
+    });
+
+    // A link out of the corpus is a real link; it is simply not a page of it.
+    it("does not follow a link out of the corpus", () => {
+        const index = guide({
+            "Guide/README.md": note(
+                { type: "doc", shortcode: "root" },
+                "See [[skill-clmb]].",
+            ),
+            "Skills/Climbing.md": note({ type: "skill", shortcode: "clmb" }),
+        });
+        const r = walkReachability(index, { root: "Guide/README.md", scope });
+        expect(r.orphans).toEqual([]);
+        expect(r.reached.size).toBe(1);
+    });
+
+    // An index links to nearly everything, so walking through one would make
+    // the check vacuous.
+    it("walks to a stopAt page but not through it", () => {
+        const index = guide({
+            "Guide/README.md": note(
+                { type: "doc", shortcode: "root" },
+                "See [[doc-glossary]].",
+            ),
+            "Guide/Glossary.md": note(
+                { type: "doc", shortcode: "glossary" },
+                "Everything: [[doc-buried]].",
+            ),
+            "Guide/Buried.md": note({ type: "doc", shortcode: "buried" }),
+        });
+        const r = walkReachability(index, {
+            root: "Guide/README.md",
+            scope,
+            stopAt: (n: any) => n.fm.shortcode === "glossary",
+        });
+        // The glossary itself is reached; what only it links to is not.
+        expect(r.orphans.map((o: any) => o.rel)).toEqual(["Guide/Buried.md"]);
+    });
+
+    it("survives a cycle", () => {
+        const index = guide({
+            "Guide/README.md": note(
+                { type: "doc", shortcode: "root" },
+                "See [[doc-one]].",
+            ),
+            "Guide/One.md": note(
+                { type: "doc", shortcode: "one" },
+                "Back to [[doc-root]].",
+            ),
+        });
+        const r = walkReachability(index, { root: "Guide/README.md", scope });
+        expect(r.orphans).toEqual([]);
+    });
+
+    // Reporting every page as an orphan would bury the actual mistake.
+    it("refuses a corpus with no page one", () => {
+        const index = guide({
+            "Guide/One.md": note({ type: "doc", shortcode: "one" }),
+        });
+        expect(() =>
+            walkReachability(index, { root: "Guide/README.md", scope }),
+        ).toThrow(/no note at Guide\/README\.md/);
     });
 });
