@@ -39,6 +39,7 @@
  *   npx content-build package clean [pack] [entry]
  *   npx content-build docs item-fields [--out <path>] [--title <title>]
  *   npx content-build lint [root]
+ *   npx content-build reachability <dir> [file] [--index <shortcode>]
  *
  * In a consuming repository, wrapped as npm scripts — SoHL spells them:
  *   npm run build:compiledb                // → … package compile (all packs)
@@ -61,6 +62,7 @@ import { loadPackConfig } from "../engine/pack-config.mjs";
 import { readPackageManifest } from "../engine/package-manifest.mjs";
 import { renderItemFieldReference } from "../engine/field-reference.mjs";
 import { lintContentTree } from "../engine/content-lint.mjs";
+import { buildLinkIndex, walkReachability } from "../engine/content-links.mjs";
 import { emitDiagnostic } from "../engine/diagnostics.mjs";
 
 /**
@@ -113,6 +115,7 @@ const argv = yargs(hideBin(process.argv))
     .command(packageCommand())
     .command(docsCommand())
     .command(lintCommand())
+    .command(reachabilityCommand())
     .version(ownVersion())
     .help()
     .alias("help", "h").argv;
@@ -206,6 +209,100 @@ function lintCommand() {
                     log.info(
                         `Addresses are well-formed and unique ` +
                             `(${keys} across ${notes} note(s)).`,
+                    );
+                }
+            } catch (err) {
+                log.error(err.message);
+                process.exitCode = 1;
+            }
+        },
+    };
+}
+
+/**
+ * `content-build reachability <dir> [file]` — check that a corpus reads through.
+ *
+ * The corpus is named on the command line rather than declared in code, because
+ * it never changes for a given repository: a consumer hardcodes the invocation
+ * in `package.json` and gets the check without writing a script.
+ *
+ *   content-build reachability Rules --index glossary
+ *   content-build reachability User_Guide --index glossary
+ *
+ * @returns {object} The yargs command module.
+ */
+// eslint-disable-next-line
+function reachabilityCommand() {
+    return {
+        command: "reachability <dir> [file]",
+        describe: "Check that every document in a corpus is reachable",
+        builder: (yargs) => {
+            yargs.positional("dir", {
+                describe:
+                    "The corpus directory, relative to the content tree root.",
+                type: "string",
+            });
+            yargs.positional("file", {
+                describe: "The corpus's entry page within that directory.",
+                type: "string",
+                default: "README.md",
+            });
+            yargs.option("index", {
+                describe:
+                    "Shortcode of a page walked *to* but not *through*. " +
+                    "Repeatable. An index links to nearly everything it " +
+                    "covers, so walking one makes the check vacuous.",
+                type: "string",
+                array: true,
+                default: [],
+            });
+            yargs.option("root", {
+                describe:
+                    "Content tree to read. Defaults to the configured contentBase.",
+                type: "string",
+            });
+        },
+        handler: (argv) => {
+            try {
+                const contentBase = argv.root ?? loadPackConfig().paths.content;
+                const dir = String(argv.dir).replace(/\/+$/, "");
+                const index = buildLinkIndex(contentBase);
+                const indexes = new Set(argv.index.map(String));
+
+                const { orphans } = walkReachability(index, {
+                    root: `${dir}/${argv.file}`,
+                    scope: (n) => n.rel.startsWith(`${dir}/`),
+                    stopAt: (n) => indexes.has(String(n.fm.shortcode)),
+                });
+
+                const total = index.notes.filter((n) =>
+                    n.rel.startsWith(`${dir}/`),
+                ).length;
+
+                for (const o of orphans) {
+                    // Unreachability is a property of the whole document, so
+                    // there is no line to name.
+                    emitDiagnostic({
+                        file: o.file,
+                        severity: "error",
+                        message:
+                            `unreachable from ${dir}/${argv.file} — nothing ` +
+                            `in ${dir} links to it`,
+                    });
+                }
+
+                if (orphans.length) {
+                    log.error(
+                        `${orphans.length} of ${total} document(s) in ${dir} ` +
+                            `cannot be arrived at by reading. A corpus is a ` +
+                            `book, not a pile of notes: link each one from the ` +
+                            `chapter or section that owns it.`,
+                    );
+                    process.exitCode = 1;
+                } else {
+                    log.info(
+                        `All ${total} document(s) in ${dir} are reachable ` +
+                            `from ${argv.file}.`,
                     );
                 }
             } catch (err) {
