@@ -232,3 +232,39 @@ export function positionInFrontmatter(raw, key, value = undefined) {
 function escape(literal) {
     return String(literal).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
+
+/**
+ * Where a literal sits in a text, so a finding about it can be opened.
+ *
+ * {@link positionInBody} maps an offset within a parsed note body, and
+ * {@link positionInFrontmatter} finds a key in the fence. This is the plainer
+ * case: a finding about a string the reader can see in a file that is neither —
+ * a manifest, a lockfile, a config.
+ *
+ * `@heroiclands/package-build` carries the same arithmetic for the files *it*
+ * reads. That is a duplicate worth naming: unlike the diagnostic *format* or a
+ * validation *rule*, "which line and column is this substring on" has exactly
+ * one correct answer and cannot drift into disagreement. The tidier arrangement
+ * is for that package to re-export this one — the dependency runs that way — and
+ * it should, next time either is touched.
+ *
+ * @param {string} text - The file's contents.
+ * @param {string} needle - The literal to locate.
+ * @param {number} [occurrence] - Which occurrence, 1-based. Repeats of one
+ *   literal are otherwise indistinguishable.
+ * @returns {{line?: number, column?: number}} Spreadable position fields, empty
+ *   when the literal is not there — dropped rather than guessed.
+ */
+export function positionOfLiteral(text, needle, occurrence = 1) {
+    if (typeof text !== "string" || !needle) return {};
+    let at = -1;
+    for (let n = 0; n < occurrence; n++) {
+        at = text.indexOf(needle, at + 1);
+        if (at === -1) return {};
+    }
+    const before = text.slice(0, at);
+    return {
+        line: before.split("\n").length,
+        column: at - before.lastIndexOf("\n"),
+    };
+}
