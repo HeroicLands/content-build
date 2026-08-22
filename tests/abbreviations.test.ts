@@ -25,6 +25,18 @@ describe("abbreviateTokens", () => {
         expect(abbrev("Mountain Fort")).toEqual(["mt", "ft"]);
     });
 
+    it("abbreviates the common arms-and-armour words", () => {
+        expect(abbrev("Round Shield")).toEqual(["rnd", "shld"]);
+        expect(abbrev("Long Sword")).toEqual(["long", "swd"]);
+        expect(abbrev("Battle Axe")).toEqual(["btl", "axe"]);
+    });
+
+    // Whole words only: `broadsword` is one word, so `sword`'s rule does not
+    // reach inside it.
+    it("does not abbreviate a word that merely ends in one", () => {
+        expect(abbrev("Broadsword")).toEqual(["broadsword"]);
+    });
+
     it("leaves a word with no entry alone", () => {
         expect(abbrev("Broadsword")).toEqual(["broadsword"]);
         expect(abbrev("Wolf of the North")).toEqual([
