@@ -69,6 +69,9 @@ export * as kbManifest from "./kb-manifest.mjs";
 /** Address rules every content tree is linted against: shape, uniqueness, alias. */
 export * as contentLint from "./content-lint.mjs";
 
+/** Resolving every link in a tree, and the ones that land nowhere. */
+export * as contentLinks from "./content-links.mjs";
+
 /** Wikilinks resolved to a **web URL** — the site half of the pair below. */
 export * as webWikilinks from "./web-wikilinks.mjs";
 
