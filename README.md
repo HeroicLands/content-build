@@ -7,13 +7,8 @@ Every HeroicLands content module (`sohl`, `thalorna`, `kethira`, and the
 adventure modules) builds its packs from this one implementation, rather than
 from a copied `utils/packs/` tree.
 
-It ships a command line as well as a library:
-
-```
-npx content-build package compile [pack]
-npx content-build package unpack [pack] [entry]
-npx content-build package clean [pack] [entry]
-```
+It ships a command line as well as a library — see
+[Command line](#command-line) for the whole surface.
 
 ## Install
 
@@ -327,6 +322,34 @@ costs the `sohl` package nothing: `ITEM_BUILDERS` reads each entry's image out o
 that same map, so there is still exactly one map — and the drift a test used to
 watch for is now unrepresentable, because building the registry throws if a type
 has no art.
+
+## Command line
+
+```
+npx content-build package <compile|unpack|clean> [pack] [entry]
+npx content-build docs item-fields [--out <path>] [--title <title>]
+npx content-build lint [root]
+npx content-build links [root] [--manifests <dir>]
+npx content-build reachability <dir> [file] [--index <shortcode>]
+```
+
+| Command        | What it does                                                                                                                  |
+| -------------- | ----------------------------------------------------------------------------------------------------------------------------- |
+| `package`      | Compile the content tree into LevelDB packs, unpack a shipped pack back to JSON, or clean one. See [Install](#install).       |
+| `docs`         | Render a generated reference from the configured registries. `item-fields` is the item-frontmatter page.                      |
+| `lint`         | Check a content tree's addresses — shape, uniqueness, alias. See [Linting a content tree](#linting-a-content-tree).           |
+| `links`        | Check that every link in the tree lands: dead anchors, dead qualified addresses, wikilinks in frontmatter, drifted manifests. |
+| `reachability` | Walk outward from an index note and report what no path reaches, for a tree meant to be navigable from one entry point.       |
+
+Every path, pack name and root it needs comes from the consuming repository's
+`content-build.config.yaml`, so the usual invocation takes no arguments beyond
+the command itself. What may be named on the command line overrides that.
+
+**Every invocation it accepts is one it performs.** A missing command, an
+unknown command, a missing or unknown action, and an unknown option are each an
+error that names what was wrong and exits non-zero — never a silent success. A
+build chain can therefore treat a zero exit as "the work happened". `--version`
+and `--help` still answer in a directory with no configuration at all.
 
 ## Linting a content tree
 
