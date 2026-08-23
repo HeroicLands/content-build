@@ -60,7 +60,6 @@ import {
     unpackPacks,
 } from "../engine/compendiums.mjs";
 import { loadPackConfig } from "../engine/pack-config.mjs";
-import { readPackageManifest } from "../engine/package-manifest.mjs";
 import { renderItemFieldReference } from "../engine/field-reference.mjs";
 import { lintContentTree } from "../engine/content-lint.mjs";
 import {
@@ -75,18 +74,22 @@ import {
 } from "../engine/foreign-manifests.mjs";
 
 /**
- * The packs the shipped Foundry package declares — what `unpack` extracts.
+ * The packs `unpack` extracts.
  *
- * Read on demand rather than at load: a repository that has no package manifest
- * still has a working `compile`, whose own package-id guard
- * (`assertPackageIdMatchesManifestFile`) resolves either manifest kind. A
- * missing manifest is still loud — it throws, and the handler below turns that
- * into a reported failure.
+ * From the configuration's own pack list, which is where the build already
+ * knows them. It used to come out of the shipped manifest — a second
+ * declaration of the same list, in a second format, with nothing checking that
+ * the two agreed. The manifest is generated from this list now
+ * (package-build#9), so reading it back would be a round trip through an
+ * artifact that need not exist.
+ *
+ * Read on demand rather than at load, so `--version` and `--help` still answer
+ * with no configuration present (#2).
  *
  * @returns {Array<{name: string}>}
  */
-function manifestPacks() {
-    return readPackageManifest().manifest.packs;
+function configuredPacks() {
+    return loadPackConfig().packDirectories.map((name) => ({ name }));
 }
 
 /**
@@ -492,8 +495,7 @@ function packageCommand() {
                 switch (action) {
                     // Every path and pack list the library needs is defaulted
                     // from the resolved configuration, so nothing is restated
-                    // here (#1508). Only `packs` is passed: it comes from the
-                    // shipped manifest, not from configuration.
+                    // here (#1508).
                     case "compile":
                         return await compilePacks({ packName: pack });
                     case "clean":
@@ -503,7 +505,7 @@ function packageCommand() {
                         });
                     case "unpack":
                         return await unpackPacks({
-                            packs: manifestPacks(),
+                            packs: configuredPacks(),
                             packName: pack,
                             entryName: entry,
                         });

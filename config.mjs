@@ -89,7 +89,6 @@ export const PACKAGE_KINDS = /** @type {const} */ (["systems", "modules"]);
  */
 export const DEFAULT_PATHS = /** @type {const} */ ({
     content: "assets/content",
-    packageManifest: "assets/templates",
     manifests: "assets/manifests",
     packJson: "build/packs-json",
     stage: "build/stage/packs",

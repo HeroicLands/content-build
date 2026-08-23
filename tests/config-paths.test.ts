@@ -27,10 +27,6 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import { defineConfig } from "../index.mjs";
 import { buildStats as buildStatsRaw } from "../engine/helpers.mjs";
 import { countContentNotes } from "../engine/content-tree.mjs";
-import {
-    resolvePackageManifestPath,
-    readManifestPackageId,
-} from "../engine/package-manifest.mjs";
 
 // The pack helpers are plain ESM whose JSDoc types the return as `object`.
 const buildStats = (systemVersion?: string, config?: unknown): any =>
@@ -114,7 +110,7 @@ function configFor(root: string, coreVersion = "14.359") {
             systemVersion: "3.2.1",
             lastModifiedBy: "elsewherebuild0",
         },
-        paths: { content: "vault/notes", packageManifest: "meta" },
+        paths: { content: "vault/notes" },
         packs: [{ name: "items", type: "Item" }],
     });
 }
@@ -125,7 +121,6 @@ describe("a consumer that moves a directory is honoured (#1508)", () => {
 
     it("resolves a relocated directory against the consumer's own root", () => {
         expect(config.paths.content).toBe(path.join(root, "vault/notes"));
-        expect(config.paths.packageManifest).toBe(path.join(root, "meta"));
         // Nothing is left pointing at the convention the consumer declined.
         expect(fs.existsSync(path.join(root, "assets/content"))).toBe(false);
     });
@@ -143,19 +138,6 @@ describe("a consumer that moves a directory is honoured (#1508)", () => {
         expect(stats.systemId).toBe("sohl");
         expect(stats.systemVersion).toBe("3.2.1");
         expect(stats.lastModifiedBy).toBe("elsewherebuild0");
-    });
-
-    it("finds a module repository's manifest in the moved directory", () => {
-        // A module ships `module.template.json`, and this one is not under
-        // `assets/templates` at all. Both facts still have to come from config
-        // — the package-id guard reads the manifest even though the stamp no
-        // longer does.
-        expect(resolvePackageManifestPath(config.paths.packageManifest)).toBe(
-            path.join(config.paths.packageManifest, "module.template.json"),
-        );
-        expect(
-            readManifestPackageId(config.paths.packageManifest).packageId,
-        ).toBe("sohl-elsewhere");
     });
 });
 
@@ -203,7 +185,7 @@ describe("path resolution does not depend on the working directory", () => {
                     systemVersion: "3.2.1",
                     lastModifiedBy: "elsewherebuild0",
                 },
-                paths: { content: "vault/notes", packageManifest: "meta" },
+                paths: { content: "vault/notes" },
                 packs: [{ name: "items", type: "Item" }],
             });
             process.stdout.write(JSON.stringify({

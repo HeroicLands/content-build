@@ -55,7 +55,6 @@ export * as packRouter from "./pack-router.mjs";
 export * as contentPackage from "./content-package.mjs";
 
 /** The shipped Foundry manifest: locating it, reading it, guarding its id. */
-export * as packageManifest from "./package-manifest.mjs";
 
 /** The URL a content note is published at — the one web-address rule. */
 export * as contentSlug from "./content-slug.mjs";

@@ -29,12 +29,8 @@ const PKG_ROOT = path.resolve(
     path.dirname(fileURLToPath(import.meta.url)),
     "..",
 );
-const MANIFEST = JSON.parse(
-    fs.readFileSync(
-        path.join(PKG_ROOT, "tests/fixtures/templates/system.template.json"),
-        "utf8",
-    ),
-);
+/** The Foundry floor this repository's development configuration declares. */
+const CORE_FLOOR = loadPackConfig().compatibility.minimum;
 
 /**
  * The newest Foundry v14 migration shim that rewrites shipped document data.
@@ -75,7 +71,7 @@ describe("the compiled-pack `_stats` stamp", () => {
         // Two literals would rot apart. The stamp is only *safe* because the
         // manifest refuses to run on an older core, so if that floor ever moves
         // the stamp has to move with it.
-        expect(buildStats().coreVersion).toBe(MANIFEST.compatibility.minimum);
+        expect(buildStats().coreVersion).toBe(CORE_FLOOR);
     });
 
     it("is never older than the newest v14 migration shim", () => {
@@ -92,9 +88,7 @@ describe("the compiled-pack `_stats` stamp", () => {
     it("keeps the supported floor above those shims", () => {
         // The stamp is derived, so this is what actually makes it safe: a
         // client old enough to run those shims cannot load the system at all.
-        expect(
-            isOlderThan(MANIFEST.compatibility.minimum, NEWEST_V14_SHIM),
-        ).toBe(false);
+        expect(isOlderThan(CORE_FLOOR, NEWEST_V14_SHIM)).toBe(false);
     });
 
     it("still carries the system version it is given", () => {
@@ -127,7 +121,6 @@ describe("the `_stats` stamp is configuration, not a literal (#1508)", () => {
                 systemVersion: "0.1.0",
                 lastModifiedBy: "thalornabuild000",
             },
-            paths: { packageManifest: "tests/fixtures/templates" },
             packs: [{ name: "items", type: "Item" }],
         });
         const stats = buildStats(undefined, moduleConfig);
@@ -135,6 +128,6 @@ describe("the `_stats` stamp is configuration, not a literal (#1508)", () => {
         expect(stats.lastModifiedBy).toBe("thalornabuild000");
         // Derived from that config's own manifest directory — the fixture here,
         // since the module config points its root and manifest path at it.
-        expect(stats.coreVersion).toBe(MANIFEST.compatibility.minimum);
+        expect(stats.coreVersion).toBe(CORE_FLOOR);
     });
 });

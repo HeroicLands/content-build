@@ -18,11 +18,6 @@ import {
     contentPackage,
     foundryPackageId,
 } from "../engine/content-package.mjs";
-import {
-    resolvePackageManifestPath,
-    readPackageManifest,
-    readManifestPackageId,
-} from "../engine/package-manifest.mjs";
 import { supportedCoreVersion } from "../engine/helpers.mjs";
 
 // Anchored on this file, not the working directory: the same paths have to
@@ -36,12 +31,6 @@ import { supportedCoreVersion } from "../engine/helpers.mjs";
 const PKG_ROOT = path.resolve(
     path.dirname(fileURLToPath(import.meta.url)),
     "..",
-);
-const MANIFEST = JSON.parse(
-    fs.readFileSync(
-        path.join(PKG_ROOT, "tests/fixtures/templates/system.template.json"),
-        "utf8",
-    ),
 );
 
 /**
@@ -116,25 +105,16 @@ describe("the one pack list (#1508 — SOURCE_PACKS and PACK_CONFIGS merged)", (
         ]);
     });
 
-    it("agrees with the packs the shipped manifest declares", () => {
-        // The two lists that used to be maintained separately are now one, and
-        // this is the third list they must still match: what Foundry ships.
-        const declared = [
-            ...packConfig.packs.flatMap((pack) => [
-                { name: pack.name, type: pack.type },
-                ...pack.companions.map(
-                    (companion: { name: string; type: string }) => ({
-                        name: companion.name,
-                        type: companion.type,
-                    }),
-                ),
-            ]),
-        ];
-        expect(declared).toEqual(
-            MANIFEST.packs.map((p: { name: string; type: string }) => ({
-                name: p.name,
-                type: p.type,
-            })),
+    it("is the list the shipped manifest is generated from", () => {
+        // This used to compare the configured packs against the manifest's,
+        // because the two were maintained separately and had to be kept in
+        // step. package-build generates the manifest from this list now, so
+        // the comparison would be of a thing against itself — a guard that
+        // cannot fail is worse than none, because it reads like cover.
+        const flatten = (pack) => [pack, ...pack.companions.flatMap(flatten)];
+
+        expect(packConfig.packs.flatMap(flatten).map((p) => p.name)).toEqual(
+            packConfig.packDirectories,
         );
     });
 
@@ -155,40 +135,6 @@ describe("the one pack list (#1508 — SOURCE_PACKS and PACK_CONFIGS merged)", (
     });
 });
 
-describe("the manifest location is hoisted once, not twice (#1508)", () => {
-    // The core-version stamp no longer reads it (#50); the package-id guard
-    // still does, until package-build generates the manifest and the id stops
-    // being declared twice.
-    it("is the one path every reader of the manifest resolves", () => {
-        const dir = templateDir({
-            "system.template.json": {
-                id: "sohl",
-                compatibility: { minimum: "14.401" },
-            },
-        });
-        const resolved = resolvePackageManifestPath(dir);
-
-        expect(readManifestPackageId(dir).manifestPath).toBe(resolved);
-        expect(readPackageManifest(dir).manifestPath).toBe(resolved);
-    });
-
-    it("tolerates a module repository's module.template.json", () => {
-        const dir = templateDir({
-            "module.template.json": {
-                id: "sohl-thalorna",
-                compatibility: { minimum: "14.377" },
-            },
-        });
-        expect(readManifestPackageId(dir).packageId).toBe("sohl-thalorna");
-    });
-
-    it("defaults to the configured manifest directory", () => {
-        expect(resolvePackageManifestPath()).toBe(
-            path.join(packConfig.paths.packageManifest, "system.template.json"),
-        );
-    });
-});
-
 describe("the core version is configuration, and the config is its source", () => {
     // This reverses what this file asserted until #50. The rule *was* that
     // configuration may say only where the manifest is, never what it holds,
@@ -205,15 +151,13 @@ describe("the core version is configuration, and the config is its source", () =
         expect(supportedCoreVersion()).toBe(packConfig.compatibility.minimum);
     });
 
-    it("follows the configuration rather than any manifest", () => {
-        // The two disagree deliberately: the fixture manifest is now only what
-        // the package-id guard reads, and no longer feeds the stamp.
-        const fromConfig = supportedCoreVersion({
-            compatibility: { minimum: "14.900" },
-        });
-
-        expect(fromConfig).toBe("14.900");
-        expect(fromConfig).not.toBe(MANIFEST.compatibility.minimum);
+    it("follows whatever the configuration declares", () => {
+        expect(
+            supportedCoreVersion({ compatibility: { minimum: "14.900" } }),
+        ).toBe("14.900");
+        expect(
+            supportedCoreVersion({ compatibility: { minimum: "14.001" } }),
+        ).toBe("14.001");
     });
 
     it("throws rather than falling back when none is declared", () => {

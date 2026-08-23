@@ -28,10 +28,6 @@
 # this file sits in), `foundryPackage` (the adjacent `package.json` `name`) and
 # `stats.systemVersion` (its `version`, for a system).
 
-# The manifest fixture is shared with the other fixtures, one level up.
-paths:
-    packageManifest: ../templates
-
 contentPackage: sohl
 packageKind: systems
 
