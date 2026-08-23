@@ -67,7 +67,10 @@ skipDirectories: [Templates]
 # conventional layout shown here.
 paths:
   content: assets/content
+  # Vendored foreign manifests, read by `links`. Inbound.
   manifests: assets/manifests
+  # Where `manifest` writes this package's own. Outbound, and a build artifact.
+  manifestOut: build/manifests
   packJson: build/packs-json
   stage: build/stage/packs
   unpack: build/tmp/packs
@@ -105,10 +108,14 @@ packageBuild:
   assets:
     - { from: assets/icons, to: assets/icons }
 
-# Three independent switches — every combination is real.
+# Three independent switches — every combination is real — plus the address
+# scheme both `manifest` and the page build derive addresses under.
 publish:
   site: true
   manifests: { publish: true, consume: true }
+  address:
+    prefix: kb/
+    landing: readme
 ```
 
 The loader validates the document, resolves every path against the directory
@@ -342,6 +349,7 @@ npx content-build package <compile|unpack|clean> [pack] [entry]
 npx content-build docs item-fields [--out <path>] [--title <title>]
 npx content-build lint [root]
 npx content-build links [root] [--manifests <dir>]
+npx content-build manifest [root] [--out <dir>]
 npx content-build reachability <dir> [file] [--index <shortcode>]
 ```
 
@@ -351,6 +359,7 @@ npx content-build reachability <dir> [file] [--index <shortcode>]
 | `docs`         | Render a generated reference from the configured registries. `item-fields` is the item-frontmatter page.                      |
 | `lint`         | Check a content tree's addresses — shape, uniqueness, alias. See [Linting a content tree](#linting-a-content-tree).           |
 | `links`        | Check that every link in the tree lands: dead anchors, dead qualified addresses, wikilinks in frontmatter, drifted manifests. |
+| `manifest`     | Emit this package's cross-package link manifest. See [Publishing a link manifest](#publishing-a-link-manifest).               |
 | `reachability` | Walk outward from an index note and report what no path reaches, for a tree meant to be navigable from one entry point.       |
 
 Every path, pack name and root it needs comes from the consuming repository's
@@ -390,6 +399,85 @@ rather than passing: "every one of nothing is unique" is a vacuous pass, and it
 is exactly what a tree that failed to check out produces.
 
 Nothing here writes. A check reports and an author fixes.
+
+## Publishing a link manifest
+
+```bash
+npx content-build manifest              # the configured tree and output directory
+npx content-build manifest --out tmp/   # or somewhere else
+```
+
+Writes `<contentPackage>.json` naming every note this package publishes, keyed by
+the canonical `package-type-shortcode` address and valued with every address that
+note has: a `path` on the web, a `uuid` in Foundry, the `anchors` its named
+sections compiled to, and a `doc` pointer where an item's prose compiles into a
+JournalEntry of its own. A consuming build vendors the file into its own
+`paths.manifests` and resolves cross-package links through it — the counterpart
+of `links`, which consumes what this emits.
+
+It reads its whole input from configuration and takes nothing else:
+
+| Setting                     | What it decides                                               |
+| --------------------------- | ------------------------------------------------------------- |
+| `contentPackage`            | The package emitted, and which notes belong to it.            |
+| `foundryPackage`            | The package every emitted `uuid` names.                       |
+| `paths.content`             | The tree walked.                                              |
+| `paths.manifestOut`         | Where the file lands (`build/manifests` by default).          |
+| `publish.manifests.publish` | Whether this repository publishes one at all.                 |
+| `publish.site`              | Whether entries carry a `path` — see below.                   |
+| `publish.address`           | The address scheme those paths are derived under — see below. |
+
+**Both addresses are optional, independently.** A note that compiles into no
+document has no `uuid`, and a package that ships compendiums and publishes no
+site (`publish.site: false`) has no `path` on any entry. Neither is an error, and
+neither is guessed: inventing the missing one asserts a target that does not
+exist, which is the silent dead link the manifest exists to prevent.
+
+**`publish.manifests.publish` is a declaration, not a preference.** The file is
+vendored by other repositories and read as authoritative, so emitting one is a
+statement about this package. With the switch off the command fails rather than
+writing.
+
+### The address scheme
+
+Where the content tree mounts _inside the package_, and which note addresses a
+whole section rather than a page within one, differ between repositories and are
+both load-bearing. They are one setting, read by this command **and** by the page
+emitter, so the address a manifest publishes is the address a page is emitted at
+— stating it twice is how a manifest comes to assert a URL that resolves at build
+time and 404s for the reader.
+
+```yaml
+publish:
+  site: true
+  manifests: { publish: true, consume: true }
+  address:
+    prefix: kb/ # default: "" — the package root
+    landing: readme # default: readme
+```
+
+- **`prefix`** — the content tree's mount within the package. `sohl` publishes a
+  knowledgebase alongside generated API docs, so its notes sit under `kb/`
+  (`kb/affliction/aconite/`); `thalorna`'s site is nothing but its content, so it
+  has no prefix (`affiliation/the-aerarium-imperii/`). It must end in a slash and
+  must not begin with one — where the _package_ is mounted is the consuming
+  build's knowledge and is never recorded here.
+- **`landing`** — which note is a section's landing page, and so has no slug of
+  its own:
+  - `readme` — a `README.md` addresses its section. A `doc` note then routes by
+    its `category` like any other, so a `category: collection` note publishes
+    under a literal `collection/` section.
+  - `collection` — a `doc` note whose `category` is `collection` addresses the
+    section it introduces, named by its authored `section`.
+
+  The two are alternatives rather than a pair that could both apply: each live
+  content tree holds notes the other rule would move.
+
+A note the scheme yields no address for — a `doc` with no category, a collection
+note naming no section — is **reported and omitted**, never guessed. The command
+prints one located diagnostic per note and still writes the file, because a note
+with no address is ordinary while a manifest entry pointing at a page that does
+not exist is not.
 
 ## Diagnostics
 

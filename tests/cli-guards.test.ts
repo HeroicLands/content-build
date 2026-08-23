@@ -79,6 +79,7 @@ describe("an invocation that names no command", () => {
             "docs",
             "lint",
             "links",
+            "manifest",
             "reachability",
         ]) {
             expect(shown).toContain(command);
@@ -142,6 +143,20 @@ describe("what still answers without a configuration", () => {
 
         expect(code).toBe(0);
         expect(out.trim()).toBe(manifest.version);
+    });
+
+    it("refuses to emit a manifest the repository does not publish", () => {
+        // The switch is a declaration, not a preference: emitting without it
+        // publishes a file a consumer vendors and treats as authoritative.
+        // Reported here rather than in the library, because it is a question
+        // about the invocation and not about the tree.
+        const { code, err } = run("manifest");
+
+        expect(code).toBe(1);
+        // No configuration exists at all in this sandbox, so the failure is the
+        // missing config rather than the switch — either way it must not be a
+        // silent success.
+        expect(err).not.toBe("");
     });
 
     it("--help answers, and lists every command", () => {

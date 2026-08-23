@@ -40,6 +40,7 @@
  *   npx content-build docs item-fields [--out <path>] [--title <title>]
  *   npx content-build lint [root]
  *   npx content-build links [root] [--manifests <dir>]
+ *   npx content-build manifest [root] [--out <dir>]
  *   npx content-build reachability <dir> [file] [--index <shortcode>]
  *
  * In a consuming repository, wrapped as npm scripts — SoHL spells them:
@@ -62,6 +63,7 @@ import {
 import { loadPackConfig } from "../engine/pack-config.mjs";
 import { renderItemFieldReference } from "../engine/field-reference.mjs";
 import { lintContentTree } from "../engine/content-lint.mjs";
+import { emitLinkManifest } from "../engine/manifest-emit.mjs";
 import {
     auditLinks,
     buildLinkIndex,
@@ -128,6 +130,7 @@ const argv = yargs(hideBin(process.argv))
     .command(docsCommand())
     .command(lintCommand())
     .command(linksCommand())
+    .command(manifestCommand())
     .command(reachabilityCommand())
     .version(ownVersion())
     .help()
@@ -441,6 +444,82 @@ function linksCommand() {
                             `(${usedManifest.size} cross-package reference(s) ` +
                             `via manifest), no wikilink in frontmatter.`,
                     );
+                }
+            } catch (err) {
+                log.error(err.message);
+                process.exitCode = 1;
+            }
+        },
+    };
+}
+
+/**
+ * `content-build manifest` — emit this package's cross-package link manifest.
+ *
+ * The last capability the library exposed without a command (#58). Every
+ * consumer that publishes a manifest had to write the walk, the address
+ * derivation, the anchor pass and the entry assembly for itself, and the two
+ * that did drifted apart: one routed its UUIDs through the pack router and one
+ * did not, so a repository shipping several packs of a type published UUIDs
+ * naming the wrong one.
+ *
+ * Takes no paths. The content tree, the output directory, the content and
+ * Foundry package identities and the address scheme all come from
+ * `content-build.config.yaml`; `[root]` and `--out` exist to point the same
+ * derivation at a scratch tree, not because a build needs to name them.
+ *
+ * @returns {object} The yargs command module.
+ */
+// eslint-disable-next-line
+function manifestCommand() {
+    return {
+        command: "manifest [root]",
+        describe: "Emit this package's cross-package link manifest",
+        builder: (yargs) => {
+            yargs.positional("root", {
+                describe:
+                    "Content tree to read. Defaults to the configured contentBase.",
+                type: "string",
+            });
+            yargs.option("out", {
+                describe:
+                    "Directory to write into. Defaults to the configured " +
+                    "`paths.manifestOut`.",
+                type: "string",
+            });
+        },
+        handler: (argv) => {
+            try {
+                const config = loadPackConfig();
+                const { written, notes, skipped } = emitLinkManifest({
+                    config,
+                    ...(argv.root ? { contentBase: argv.root } : {}),
+                    ...(argv.out ? { outDir: argv.out } : {}),
+                });
+
+                for (const { package: pkg, file, count } of written) {
+                    log.info(
+                        `${pkg} → ${path.relative(process.cwd(), file)} ` +
+                            `(${count} entries, from ${notes} addressable ` +
+                            `note(s))`,
+                    );
+                }
+
+                // Reported rather than fatal: a note with no address is
+                // ordinary — a template, a stub, a `doc` with no category —
+                // and failing the build on one would make the manifest
+                // unemittable for a reason that is not about the manifest.
+                // Silence is the thing to avoid, since a note that quietly
+                // lost its address becomes a dead link in every consumer.
+                for (const s of skipped) {
+                    emitDiagnostic({
+                        file: path.join(
+                            argv.root ?? config.paths.content,
+                            s.file,
+                        ),
+                        severity: "warning",
+                        message: `no address, so it is absent from the manifest: ${s.reason}`,
+                    });
                 }
             } catch (err) {
                 log.error(err.message);
