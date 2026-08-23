@@ -1,5 +1,139 @@
 # @heroiclands/content-build
 
+## 1.4.0
+
+### Minor Changes
+
+- 04577c7: **`content-build manifest` emits a package's link manifest, so no consumer
+  writes the walk itself (#58).**
+  
+  `writeManifests` could always write a manifest; nothing could _derive_ one. So a
+  repository that publishes one wrote the walk, the address derivation, the anchor
+  pass and the entry assembly for itself — 285 lines in `sohl`, 300 in
+  `sohl-thalorna` — and the two drifted in ways nobody chose. One routed its UUIDs
+  through the pack router and one did not, so a repository shipping several packs
+  of a type published UUIDs naming the wrong one.
+  
+  ```bash
+  npx content-build manifest              # the configured tree and output directory
+  npx content-build manifest --out tmp/   # or somewhere else
+  ```
+  
+  It takes no paths. The content tree, the output directory, the two package
+  identities and the address scheme all come from configuration; `[root]` and
+  `--out` exist to point the same derivation at a scratch tree.
+  
+  **The base a manifest records against is gone from the interface, because it was
+  never an input.** Both scripts built a site-absolute URL and handed
+  `buildManifest` the base it was built from, whose first act is to strip that same
+  prefix back off — the value provably never reached the file. Addresses are now
+  derived package-relative from the start. What survives is the two-state
+  distinction `publish.site` already carries: a build that publishes no pages emits
+  entries with no `path`, exactly as a note that compiles into no document emits
+  none with no `uuid`.
+  
+  **What genuinely differed between the two consumers is now one setting, shared
+  with the page build.** Where the content tree mounts inside the package, and
+  which note addresses a whole section rather than a page within one, are both
+  load-bearing — `sohl` records `kb/affliction/aconite/` and `thalorna` records
+  `affiliation/the-aerarium-imperii/` — and reading them in one place is what stops
+  a manifest asserting an address the site does not publish:
+  
+  ```yaml
+  publish:
+    site: true
+    manifests: { publish: true, consume: true }
+    address:
+      prefix: kb/ # default "" — the content tree mounts at the package root
+      landing: readme # readme | collection
+  ```
+  
+  `landing` names which note is a section's landing page: `readme` (a `README.md`
+  addresses its section) or `collection` (a `doc` note whose `category` is
+  `collection` addresses the section it introduces, named by its authored
+  `section`). The two are alternatives, not a pair that could both apply — each
+  live content tree holds notes the other rule would move.
+  
+  **Verified byte-for-byte against both consumers**: the command reproduces
+  `sohl`'s manifest (2,691 entries from 1,457 notes) and `sohl-thalorna`'s (2,367
+  entries) exactly as the scripts it replaces emit them, on the same toolchain.
+  
+  Also new:
+  
+  - `paths.manifestOut` (default `build/manifests`) — where the manifest is
+    written. Deliberately not `paths.manifests`, which is the _inbound_ directory
+    of vendored foreign manifests that `links` consumes.
+  - `publish.manifests.publish` is enforced as a declaration rather than a
+    preference: with it off, emitting fails instead of writing a file other
+    repositories would vendor and read as authoritative. The check lives in the
+    library, so a caller that bypasses the command cannot bypass the declaration.
+  - A note the scheme yields no address for is reported as a located diagnostic and
+    omitted, never guessed — the old scripts printed a loose list.
+  - `engine/manifest-emit.mjs` exports the pass (`collectManifestEntries`,
+    `entriesForNote`, `anchorsOf`, `emitLinkManifest`) for a consumer that needs a
+    step of it rather than the whole command.
+- 7ce0349: **`content-build site` publishes a content tree as a website, so no consumer
+  writes the pipeline itself (#63).**
+  
+  Compiling a content tree into compendium packs was `content-build package
+  compile`. Publishing the _same tree_ as a website was a script each consumer
+  wrote for itself — 473 code lines in `sohl`, 462 in `sohl-thalorna`, 87 of them
+  identical — and the copies drifted where nobody could see it. `sohl-thalorna`
+  reimplemented four things this package already exported, not because it needed
+  different behaviour but because its script predates the extraction.
+  
+  ```bash
+  npx content-build site               # the configured tree and output
+  npx content-build site --out tmp/kb  # or somewhere else
+  ```
+  
+  The command does the walk, the frontmatter read, the address derivation, the
+  address index, table expansion, wikilink resolution, code-fence protection, the
+  foreign-manifest merge, page emission, and the section-landing backfill.
+  
+  **Addresses are not part of the new `site:` section.** They come from
+  `publish.address`, the same setting `manifest` reads, so a page and its manifest
+  entry cannot disagree about where the page is. `site:` is framing only — the
+  output root, the base, which packages are rendered, what a section is called,
+  which extra trees are published beside the content, and which named pass bundle
+  supplies the repository's own body rewrites.
+  
+  **Consumer passes are named, not imported.** A repository's own rewrites are
+  code and a configuration is data, so a configuration names a bundle and the
+  toolchain resolves it, exactly as `itemBuilders` names an item registry.
+  `sohlKb` is the bundle for the `sohl` knowledgebase — `{@link}` against a
+  TypeDoc symbol map, and repository-relative links in developer docs. A bundle
+  supplies `beforeLinks` (every page, before wikilinks resolve) and `afterLinks`
+  (extra-tree pages only), both inside code-fence protection.
+  
+  **Every gate reports; none exits.** The seven integrity checks — a wikilink in
+  frontmatter, a name yielding no slug, two notes claiming one URL, an unusable or
+  unaddressable vendored manifest, an address two packages both claim, a bad table
+  or dead link — were inline `process.exit` calls in both scripts, with no test
+  between them. They now return findings and the command decides, which is the
+  only reason they can be tested at all.
+  
+  **Verified byte-for-byte**: the command reproduces `sohl`'s entire published tree
+  — 1,520 files, 5,479,528 bytes — exactly as the script it replaces emits it.
+  
+  **A safety note worth stating plainly.** The output tree is wiped on every run so
+  a renamed note's page cannot linger. An unset `site.out` resolves to the
+  repository root, and the wipe then deletes the working tree — which happened
+  while this command was being written, on a configuration that had no `site`
+  section yet. `site.out` is now required, and refused again unless it resolves
+  strictly inside the repository root. Both failing shapes are ordinary rather than
+  exotic, so neither is left to care.
+  
+  Also new:
+  
+  - `engine/site-build.mjs` exports each stage (`collectContentPages`,
+    `collectTreePages`, `siteGates`, `renderPages`, `writeSectionLandings`) for a
+    consumer that needs a step rather than the whole command.
+  - `sohl/kb-passes.mjs` exports the two `sohl` rewrites directly.
+  - `gray-matter` is a dependency. It is the authority on the exact bytes of a
+    page's frontmatter, and matching it is what makes the byte-identical claim
+    above true rather than approximately true.
+
 ## 1.3.0
 
 ### Minor Changes
