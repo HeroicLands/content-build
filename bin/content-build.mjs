@@ -147,8 +147,21 @@ const argv = yargs(hideBin(process.argv))
  *
  * The page is generated from the `fields` each `itemBuilders` entry declares,
  * so every consuming repository documents *its own* registry with the same
- * command (#22). Written to `--out` when given, otherwise to stdout, which is
- * what lets a consumer's `--check` guard diff it without a temporary file.
+ * command (#22).
+ *
+ * **The framing comes from configuration**, because the tables are the only
+ * part that is the same everywhere. A repository's `docs.itemFields` says what
+ * the page is called, where it is filed, and what a reader is told before the
+ * tables start — the "See also" line its section carries, the paragraph
+ * explaining what the page covers. Those were the whole reason a consumer wrote
+ * a script around this renderer instead of calling the command.
+ *
+ * `--check` compares against the file already there rather than writing it, so
+ * a repository can gate on the page being current without a temporary file or a
+ * second implementation of the comparison. Staleness is a property of the whole
+ * generated file, so there is no line to name.
+ *
+ * `--out` and `--title` still override, for a one-off render.
  *
  * @returns {object} The yargs command module.
  */
@@ -168,8 +181,15 @@ function docsCommand() {
                 choices: ["item-fields"],
             });
             yargs.option("out", {
-                describe: "Write to this file instead of stdout.",
+                describe:
+                    "Write to this file instead of the configured location.",
                 type: "string",
+            });
+            yargs.option("check", {
+                describe:
+                    "Compare against the file already there; write nothing.",
+                type: "boolean",
+                default: false,
             });
             yargs.option("title", {
                 describe: "The page's H1.",
@@ -178,7 +198,7 @@ function docsCommand() {
         },
         handler: (argv) => {
             try {
-                const { action, out, title } = argv;
+                const { action, title, check } = argv;
                 // Dispatched on, so a second document added here cannot
                 // silently render the first. yargs' `choices` has already
                 // rejected anything unlisted, so the default is unreachable by
@@ -186,16 +206,62 @@ function docsCommand() {
                 if (action !== "item-fields") {
                     throw new Error(`docs: unhandled document "${action}".`);
                 }
-                const md = renderItemFieldReference({
-                    ...(title ? { title } : {}),
+
+                const config = loadPackConfig();
+                const spec = config.docs?.itemFields ?? {};
+                const destination =
+                    argv.out ??
+                    (spec.out ? path.resolve(config.rootDir, spec.out) : null);
+
+                const page = `${renderItemFieldReference({
+                    ...((title ?? spec.title) ?
+                        { title: title ?? spec.title }
+                    :   {}),
+                    ...(spec.preamble ? { preamble: spec.preamble } : {}),
                     generatedBy: "`content-build docs item-fields`",
-                });
-                if (out) {
-                    fs.mkdirSync(path.dirname(out), { recursive: true });
-                    fs.writeFileSync(out, `${md}\n`);
-                    log.info(`Wrote ${out}`);
+                    config,
+                })}\n`;
+
+                if (check) {
+                    if (!destination) {
+                        throw new Error(
+                            "docs: --check needs a file to compare against. " +
+                                "Declare `docs.itemFields.out` in " +
+                                "content-build.config.yaml, or pass --out.",
+                        );
+                    }
+                    const relative = path.relative(config.rootDir, destination);
+                    const current =
+                        fs.existsSync(destination) ?
+                            fs.readFileSync(destination, "utf8")
+                        :   "";
+                    if (current !== page) {
+                        // Staleness belongs to the whole file, so no line is
+                        // named — the diagnostics contract drops a field it
+                        // cannot supply rather than guessing one.
+                        log.error(
+                            `${relative}: error: out of date with the ` +
+                                `item-field declarations — run ` +
+                                `\`content-build docs item-fields\` and commit ` +
+                                `the regenerated file`,
+                        );
+                        process.exitCode = 1;
+                        return;
+                    }
+                    log.info(`${relative} is up to date.`);
+                    return;
+                }
+
+                if (destination) {
+                    fs.mkdirSync(path.dirname(destination), {
+                        recursive: true,
+                    });
+                    fs.writeFileSync(destination, page);
+                    log.info(
+                        `Wrote ${path.relative(config.rootDir, destination)}`,
+                    );
                 } else {
-                    process.stdout.write(`${md}\n`);
+                    process.stdout.write(page);
                 }
             } catch (err) {
                 log.error(err.message);
