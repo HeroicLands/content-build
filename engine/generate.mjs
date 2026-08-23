@@ -48,7 +48,6 @@ import {
     writeFolderDocs,
 } from "./helpers.mjs";
 import { countContentNotes } from "./content-tree.mjs";
-import { assertPackageIdMatchesManifestFile } from "./package-manifest.mjs";
 import { loadPackConfig } from "./pack-config.mjs";
 import { routerFor } from "./pack-router.mjs";
 
@@ -235,15 +234,6 @@ export async function generatePacksJson({
     // manifest's `id` produces a whole pack of links that resolve nowhere.
     // Throws rather than counting an error — there is nothing worth compiling.
     //
-    // This guard runs FIRST, before any pass; the empty-output guard below runs
-    // LAST, folded into the same error total. Reversed, the build would still
-    // exit non-zero, but only after emitting a whole tree of documents
-    // addressing a package that does not ship them.
-    assertPackageIdMatchesManifestFile(
-        config.foundryPackage,
-        config.paths.packageManifest,
-    );
-
     const contentBase = config.paths.content;
     if (!fs.existsSync(contentBase)) {
         log.error(`Content tree not found at ${contentBase}.`);

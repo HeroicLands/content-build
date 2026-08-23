@@ -95,7 +95,7 @@ export default defineConfig({
         systemVersion: "1.0.0",
         lastModifiedBy: "relicsbuilder00",
     },
-    paths: { content: "vault/notes", packageManifest: "meta" },
+    paths: { content: "vault/notes" },
     itemBuilders: ${builders},
     packs: [{ name: "items", type: "Item" }],
 });

@@ -36,7 +36,6 @@ import log from "loglevel";
 import { loadPackConfig } from "./pack-config.mjs";
 import { packRouter } from "./pack-router.mjs";
 import { contentPackage, foundryPackageId } from "./content-package.mjs";
-import { readPackageManifest } from "./package-manifest.mjs";
 import { loadForeignManifests, PACKAGE_BASE } from "./kb-manifest.mjs";
 import { buildWikilinkIndex, convertWikilinks } from "./wikilinks.mjs";
 import { expandContentTables } from "./content-tables.mjs";
