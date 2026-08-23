@@ -529,6 +529,21 @@ export const ITEM_FIELDS = Object.freeze({
             describe: "Which tradition the mystery belongs to.",
         },
         {
+            name: "assocSkillCode",
+            to: "assocSkillCode",
+            ...BLANK_IS_NULL,
+            default: null,
+            describe: "Shortcode of the skill the mystery is tested against.",
+        },
+        {
+            name: "assocAffiliationCode",
+            to: "assocAffiliationCode",
+            ...BLANK_IS_NULL,
+            default: null,
+            describe:
+                "Shortcode of the affiliation whose standing confers the mystery — a religion, school, or ancestor/totem/spirit.",
+        },
+        {
             name: "levelBase",
             to: "levelBase",
             ...NUMBER,
@@ -566,6 +581,14 @@ export const ITEM_FIELDS = Object.freeze({
             ...AS_AUTHORED,
             default: "",
             describe: "Shortcode of the skill the ability is tested against.",
+        },
+        {
+            name: "assocAffiliationCode",
+            to: "assocAffiliationCode",
+            ...BLANK_IS_NULL,
+            default: null,
+            describe:
+                "Shortcode of the affiliation whose standing confers the ability — a religion, school, or ancestor/totem/spirit.",
         },
         {
             name: "assocMysteryCode",
