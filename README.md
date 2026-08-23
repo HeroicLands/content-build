@@ -109,13 +109,21 @@ packageBuild:
     - { from: assets/icons, to: assets/icons }
 
 # Three independent switches — every combination is real — plus the address
-# scheme both `manifest` and the page build derive addresses under.
+# scheme both `manifest` and `site` derive addresses under.
 publish:
   site: true
   manifests: { publish: true, consume: true }
   address:
     prefix: kb/
     landing: readme
+
+# How this repository frames the website `content-build site` publishes.
+# Framing only: addresses come from `publish.address` above.
+site:
+  out: kb/content
+  landing: { title: Knowledgebase, type: knowledgebase }
+  sections:
+    being: { title: Beings, banner: banners/creature.webp }
 ```
 
 The loader validates the document, resolves every path against the directory
@@ -350,6 +358,7 @@ npx content-build docs item-fields [--out <path>] [--title <title>]
 npx content-build lint [root]
 npx content-build links [root] [--manifests <dir>]
 npx content-build manifest [root] [--out <dir>]
+npx content-build site [--out <dir>]
 npx content-build reachability <dir> [file] [--index <shortcode>]
 ```
 
@@ -360,6 +369,7 @@ npx content-build reachability <dir> [file] [--index <shortcode>]
 | `lint`         | Check a content tree's addresses — shape, uniqueness, alias. See [Linting a content tree](#linting-a-content-tree).           |
 | `links`        | Check that every link in the tree lands: dead anchors, dead qualified addresses, wikilinks in frontmatter, drifted manifests. |
 | `manifest`     | Emit this package's cross-package link manifest. See [Publishing a link manifest](#publishing-a-link-manifest).               |
+| `site`         | Publish the content tree as a website. See [Publishing a website](#publishing-a-website).                                     |
 | `reachability` | Walk outward from an index note and report what no path reaches, for a tree meant to be navigable from one entry point.       |
 
 Every path, pack name and root it needs comes from the consuming repository's
@@ -478,6 +488,108 @@ note naming no section — is **reported and omitted**, never guessed. The comma
 prints one located diagnostic per note and still writes the file, because a note
 with no address is ordinary while a manifest entry pointing at a page that does
 not exist is not.
+
+## Publishing a website
+
+```bash
+npx content-build site               # the configured tree and output
+npx content-build site --out tmp/kb  # or somewhere else
+```
+
+The sibling of `package compile`: the same content tree, rendered as pages
+instead of compiled into packs. It does the walk, the frontmatter read, the
+address derivation, the address index, table expansion, wikilink resolution,
+code-fence protection, the foreign-manifest merge, the page emission and the
+section-landing backfill.
+
+**What it does not do is decide addresses.** Those come from `publish.address`,
+the same setting the link manifest reads, so a page and its manifest entry cannot
+disagree about where the page is. Everything under `site:` is _framing_ —
+where the tree is written, what a section is called, which extra trees are
+published beside the content:
+
+```yaml
+site:
+  out: kb/content # required; wiped on every run
+  base: /sohl/ # default: /<contentPackage>/
+  packages: [sohl, thalorna] # default: just contentPackage
+  backfillSections: true
+  landing: { title: Knowledgebase, type: knowledgebase }
+  pass: sohlKb
+  passOptions:
+    apiBase: /sohl/api/
+    symbolMap: kb/data/api-symbols.json
+    blob: https://github.com/HeroicLands/…/blob/main/
+  trees:
+    - { from: kb/dev-docs, section: dev-docs }
+  sections:
+    being: { title: Beings, banner: banners/creature.webp }
+  readmeSections:
+    dev-docs: { title: Developer Documentation, banner: banners/dev-docs.webp }
+```
+
+| Key                | What it decides                                                                                  |
+| ------------------ | ------------------------------------------------------------------------------------------------ |
+| `out`              | The Hugo content root. **Required**, and wiped on every run — see the safety note below.         |
+| `base`             | Where the package is served. Defaults to `/<contentPackage>/`.                                   |
+| `packages`         | Which content packages this site renders. Defaults to its own.                                   |
+| `sections`         | Landing title and hero per section, so a landing matches the card that links to it.              |
+| `readmeSections`   | The same, for a section whose landing comes from a `README`.                                     |
+| `landing`          | Frontmatter for the mount's own `_index.md`. Passed through — the vocabulary is the theme's.     |
+| `backfillSections` | Write a bare `_index.md` for any other section directly under the mount.                         |
+| `trees`            | Extra source trees published beside the content, preserving their source layout below a section. |
+| `pass`             | A named bundle of this repository's own body rewrites.                                           |
+| `passOptions`      | That bundle's options.                                                                           |
+
+### Why `out` is required
+
+The output tree is a build artifact and is **deleted on every run**, so that a
+page whose note was renamed cannot linger and keep publishing. An unset `out`
+resolves to the repository root, and the wipe then deletes the working tree.
+That is not hypothetical — it happened while this command was being written, on
+a configuration that simply had no `site` section yet. So `out` is refused when
+unset, and refused again when it resolves anywhere that is not strictly inside
+the repository root.
+
+### Consumer passes are named, not imported
+
+A repository's own body rewrites are code, and a configuration is data, so a
+configuration **names** a bundle and the toolchain resolves it — exactly as
+`itemBuilders` names an item registry. `sohlKb` is the bundle for the `sohl`
+knowledgebase: it resolves `{@link}` tags against a TypeDoc symbol map and
+rewrites repository-relative links in the developer docs to their published or
+GitHub addresses. Neither rewrite can fail a build; an unknown `{@link}` degrades
+to a code span.
+
+A bundle supplies up to two hooks, and their order around the shared work is the
+point:
+
+1. `beforeLinks`, on every page, before wikilinks resolve — a `{@link}` tag may
+   sit in prose a wikilink also touches.
+2. `afterLinks`, on pages from an extra tree only — repository-relative links are
+   a property of how those pages are authored, not of content notes.
+
+Both run inside code-fence protection, so neither can rewrite a fenced example.
+
+### The gates
+
+Every integrity check reports and the run stops at the first that fires, so the
+output names the cause rather than its symptoms — an unusable manifest reported
+after the links that failed because of it reads as a pile of broken notes.
+
+| Gate                   | What it catches                                                                    |
+| ---------------------- | ---------------------------------------------------------------------------------- |
+| Frontmatter wikilinks  | A link in frontmatter, which is copied verbatim and reaches the reader as `[[…]]`. |
+| Slugs                  | A name that yields no URL.                                                         |
+| Collisions             | Two notes claiming one page URL.                                                   |
+| Unusable manifest      | A vendored manifest this build cannot read.                                        |
+| Unaddressable manifest | One it can read but cannot look anything up in.                                    |
+| Package conflicts      | One address claimed by two packages.                                               |
+| Tables and wikilinks   | A table directive that cannot be honoured, or a link that lands nowhere.           |
+
+None of them exits the process from inside the library; the command decides. That
+is what makes them testable, which the consumer scripts' inline `process.exit`
+calls were not.
 
 ## Diagnostics
 

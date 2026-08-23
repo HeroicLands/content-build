@@ -41,6 +41,7 @@
  *   npx content-build lint [root]
  *   npx content-build links [root] [--manifests <dir>]
  *   npx content-build manifest [root] [--out <dir>]
+ *   npx content-build site [--out <dir>]
  *   npx content-build reachability <dir> [file] [--index <shortcode>]
  *
  * In a consuming repository, wrapped as npm scripts — SoHL spells them:
@@ -64,6 +65,11 @@ import { loadPackConfig } from "../engine/pack-config.mjs";
 import { renderItemFieldReference } from "../engine/field-reference.mjs";
 import { lintContentTree } from "../engine/content-lint.mjs";
 import { emitLinkManifest } from "../engine/manifest-emit.mjs";
+import {
+    buildSite,
+    gatesFailed,
+    formatUnaddressableFinding as formatUnaddressable,
+} from "../engine/site-build.mjs";
 import {
     auditLinks,
     buildLinkIndex,
@@ -131,6 +137,7 @@ const argv = yargs(hideBin(process.argv))
     .command(lintCommand())
     .command(linksCommand())
     .command(manifestCommand())
+    .command(siteCommand())
     .command(reachabilityCommand())
     .version(ownVersion())
     .help()
@@ -521,6 +528,129 @@ function manifestCommand() {
                         message: `no address, so it is absent from the manifest: ${s.reason}`,
                     });
                 }
+            } catch (err) {
+                log.error(err.message);
+                process.exitCode = 1;
+            }
+        },
+    };
+}
+
+/**
+ * `content-build site` — publish the content tree as a website.
+ *
+ * The sibling of `package compile`: the same tree, rendered as pages instead of
+ * compiled into packs (#63). Everything a consumer used to write for itself —
+ * the walk, the address derivation, the address index, table expansion,
+ * wikilink resolution, code-fence protection, the foreign-manifest merge and
+ * the section-landing backfill — happens here, from configuration.
+ *
+ * **Each gate is reported and the run stops at the first that fires.** They are
+ * ordered so the report names the cause rather than its symptoms: an unusable
+ * manifest, reported after the links that failed because of it, reads as a pile
+ * of broken notes.
+ *
+ * @returns {object} The yargs command module.
+ */
+// eslint-disable-next-line
+function siteCommand() {
+    return {
+        command: "site",
+        describe: "Build a Hugo content tree from the content tree",
+        builder: (yargs) => {
+            yargs.option("out", {
+                describe:
+                    "Write the mount here instead of the configured `site.out`.",
+                type: "string",
+            });
+        },
+        handler: (argv) => {
+            try {
+                const result = buildSite({
+                    ...(argv.out ? { outRoot: argv.out } : {}),
+                });
+                const { gates } = result;
+
+                for (const f of gates.frontmatterLinks) {
+                    emitDiagnostic({
+                        file: f.file,
+                        severity: "error",
+                        message:
+                            `wikilink ${f.link} authored in frontmatter at ` +
+                            `${f.path} — frontmatter is data, is copied to the ` +
+                            `page verbatim, and reaches the reader as brackets`,
+                    });
+                }
+                for (const f of gates.slugErrors) {
+                    emitDiagnostic({
+                        file: f.file,
+                        severity: "error",
+                        message: `cannot derive a URL: ${f.reason}`,
+                    });
+                }
+                for (const c of gates.collisions) {
+                    log.error(`${c.url} claimed by ${c.sources.join(", ")}`);
+                }
+                for (const s of gates.staleManifests) {
+                    emitDiagnostic({
+                        file: path.join(
+                            loadPackConfig().paths.manifests,
+                            `${s.package}.json`,
+                        ),
+                        severity: "error",
+                        message: `unusable link manifest: ${s.reason}`,
+                    });
+                }
+                for (const f of gates.unaddressable) {
+                    console.error(
+                        formatUnaddressable(
+                            f,
+                            loadPackConfig().paths.manifests,
+                        ),
+                    );
+                }
+                for (const c of gates.conflicts) {
+                    log.error(
+                        `address ${c.key} is also published by ${c.package}`,
+                    );
+                }
+                if (gatesFailed(gates)) {
+                    process.exitCode = 1;
+                    return;
+                }
+
+                // Reported after the write rather than before it: both are
+                // failures of individual notes, and stopping the whole build
+                // before anything is emitted would make a single bad table
+                // hide every other problem in the tree.
+                for (const e of result.tableErrors) {
+                    log.error(`bad content table: ${e.reason}  (${e.source})`);
+                }
+                for (const e of result.wikiErrors) {
+                    log.error(
+                        `bad wikilink [[${e.target}]]: ${e.reason}  (${e.file})`,
+                    );
+                }
+                if (result.tableErrors.length || result.wikiErrors.length) {
+                    process.exitCode = 1;
+                    return;
+                }
+
+                if (result.manifests && !result.manifests.complete) {
+                    log.warn(
+                        `cross-package address checking is OFF — no manifest ` +
+                            `for ${result.manifests.missing.join(", ")}. ` +
+                            `Unresolved addresses are tolerated until every ` +
+                            `package publishes one.`,
+                    );
+                }
+
+                const s = result.stats;
+                log.info(
+                    `wrote ${s.content ?? 0} content page(s) + ` +
+                        `${s.tree ?? 0} tree page(s) + ${s.landings} ` +
+                        `landing(s) to ${path.relative(process.cwd(), s.out)}`,
+                );
             } catch (err) {
                 log.error(err.message);
                 process.exitCode = 1;
