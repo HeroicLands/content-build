@@ -502,6 +502,7 @@ const CONFIG_KEYS = [
     "skipDirectories",
     "packs",
     "docs",
+    "site",
     "compatibility",
     "relationships",
     "packageBuild",
@@ -509,6 +510,20 @@ const CONFIG_KEYS = [
 ];
 const COMPATIBILITY_KEYS = ["minimum", "verified"];
 const DOCS_KEYS = ["itemFields"];
+const SITE_KEYS = [
+    "out",
+    "base",
+    "packages",
+    "sections",
+    "readmeSections",
+    "landing",
+    "trees",
+    "pass",
+    "passOptions",
+    "backfillSections",
+];
+const SITE_TREE_KEYS = ["from", "section"];
+const SECTION_META_KEYS = ["title", "banner"];
 const DOC_PAGE_KEYS = ["title", "out", "preamble"];
 const RELATIONSHIP_KINDS = ["systems", "requires", "recommends", "conflicts"];
 const RELATIONSHIP_KEYS = ["id", "type", "manifest", "compatibility"];
@@ -806,6 +821,154 @@ function normalizeDocs(value) {
     rejectUnknownKeys(input, DOCS_KEYS, "docs.");
     return Object.freeze({
         itemFields: normalizeDocPage(input.itemFields, "docs.itemFields"),
+    });
+}
+
+/**
+ * One section's landing metadata — the title and hero a generated `_index.md`
+ * carries.
+ *
+ * `banner` is optional because the hero images are external assets and not
+ * every section has one. It is left off entirely rather than written as
+ * `undefined`, which is not a value YAML can carry.
+ *
+ * @param {unknown} value - The declared entry.
+ * @param {string} where - Dotted path, for the error.
+ * @returns {Readonly<{title: string, banner?: string}>}
+ */
+function normalizeSectionMeta(value, where) {
+    if (!isPlainObject(value)) fail(where, "must be a mapping");
+    const input = /** @type {Record<string, unknown>} */ (value);
+    rejectUnknownKeys(input, SECTION_META_KEYS, `${where}.`);
+    const out = { title: requireNonEmptyString(input.title, `${where}.title`) };
+    if (input.banner !== undefined) {
+        out.banner = requireNonEmptyString(input.banner, `${where}.banner`);
+    }
+    return Object.freeze(out);
+}
+
+/**
+ * A map of section name → landing metadata.
+ *
+ * @param {unknown} value - The declared mapping.
+ * @param {string} where - Dotted path, for the error.
+ * @returns {Readonly<Record<string, object>>}
+ */
+function normalizeSectionMap(value, where) {
+    if (value === undefined) return Object.freeze({});
+    if (!isPlainObject(value)) fail(where, "must be a mapping");
+    const out = {};
+    for (const [name, meta] of Object.entries(
+        /** @type {Record<string, unknown>} */ (value),
+    )) {
+        out[name] = normalizeSectionMeta(meta, `${where}.${name}`);
+    }
+    return Object.freeze(out);
+}
+
+/**
+ * The `site` section — how this repository frames the website it publishes.
+ *
+ * Everything here is *framing*: where the Hugo tree is written, what a section
+ * is called, which extra trees are published beside the content, and which
+ * named pass bundle supplies the repository's own body rewrites. How a page gets
+ * its **address** is deliberately not here — that is `publish.address`, shared
+ * with the link manifest so the two cannot disagree about where a page is.
+ *
+ * @param {unknown} value - The `site` block, or `undefined`.
+ * @returns {Readonly<object>} It, frozen, with every default filled.
+ */
+function normalizeSite(value) {
+    const empty = Object.freeze({
+        out: "",
+        base: "",
+        packages: Object.freeze([]),
+        sections: Object.freeze({}),
+        readmeSections: Object.freeze({}),
+        landing: null,
+        trees: Object.freeze([]),
+        pass: "",
+        passOptions: Object.freeze({}),
+        backfillSections: false,
+    });
+    if (value === undefined) return empty;
+    if (!isPlainObject(value)) fail("site", "must be a mapping");
+    const input = /** @type {Record<string, unknown>} */ (value);
+    rejectUnknownKeys(input, SITE_KEYS, "site.");
+
+    const trees = [];
+    if (input.trees !== undefined) {
+        if (!Array.isArray(input.trees)) fail("site.trees", "must be a list");
+        input.trees.forEach((entry, i) => {
+            const where = `site.trees[${i}]`;
+            if (!isPlainObject(entry)) fail(where, "must be a mapping");
+            const tree = /** @type {Record<string, unknown>} */ (entry);
+            rejectUnknownKeys(tree, SITE_TREE_KEYS, `${where}.`);
+            trees.push(
+                Object.freeze({
+                    from: requireNonEmptyString(tree.from, `${where}.from`),
+                    section: requireNonEmptyString(
+                        tree.section,
+                        `${where}.section`,
+                    ),
+                    // The tree's own path, POSIX-separated — what a
+                    // repository-relative link inside it is resolved against.
+                    rel: String(tree.from).split(path.sep).join("/"),
+                }),
+            );
+        });
+    }
+
+    let packages = [];
+    if (input.packages !== undefined) {
+        if (!Array.isArray(input.packages)) {
+            fail("site.packages", "must be a list");
+        }
+        packages = input.packages.map((p, i) =>
+            requireNonEmptyString(p, `site.packages[${i}]`),
+        );
+    }
+
+    let landing = null;
+    if (input.landing !== undefined) {
+        if (!isPlainObject(input.landing)) {
+            fail("site.landing", "must be a mapping");
+        }
+        // Passed through rather than validated field by field: it is Hugo
+        // frontmatter, whose vocabulary is the theme's and not this package's.
+        landing = Object.freeze({ ...input.landing });
+    }
+
+    return Object.freeze({
+        out:
+            input.out === undefined ?
+                ""
+            :   requireNonEmptyString(input.out, "site.out"),
+        base:
+            input.base === undefined ?
+                ""
+            :   requireNonEmptyString(input.base, "site.base"),
+        packages: Object.freeze(packages),
+        sections: normalizeSectionMap(input.sections, "site.sections"),
+        readmeSections: normalizeSectionMap(
+            input.readmeSections,
+            "site.readmeSections",
+        ),
+        landing,
+        trees: Object.freeze(trees),
+        pass:
+            input.pass === undefined ?
+                ""
+            :   requireNonEmptyString(input.pass, "site.pass"),
+        passOptions:
+            input.passOptions === undefined ?
+                Object.freeze({})
+            :   Object.freeze({ ...input.passOptions }),
+        backfillSections: optionalBoolean(
+            input.backfillSections,
+            "site.backfillSections",
+            false,
+        ),
     });
 }
 
@@ -1224,6 +1387,7 @@ export function defineConfig(config) {
         packs: Object.freeze(packs),
         packDirectories: Object.freeze(packDirectories),
         docs: normalizeDocs(input.docs),
+        site: normalizeSite(input.site),
         compatibility: normalizeCompatibility(
             input.compatibility,
             "compatibility",

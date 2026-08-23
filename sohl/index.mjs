@@ -39,6 +39,9 @@ export * as items from "./items.mjs";
 /** The Actor compiler. */
 export * as actors from "./actors.mjs";
 
+/** This package's own knowledgebase body passes, named from `site.pass`. */
+export * as kbPasses from "./kb-passes.mjs";
+
 // Flat as well as namespaced: the Foundry runtime imports these by name through
 // their own entry points, and they were this barrel's surface before the
 // compilers arrived (#1510).

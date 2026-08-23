@@ -71,6 +71,9 @@ export * as kbManifest from "./kb-manifest.mjs";
 /** Deriving this package's own link manifest from its content tree. */
 export * as manifestEmit from "./manifest-emit.mjs";
 
+/** Publishing a content tree as a website: the pass, and its integrity gates. */
+export * as siteBuild from "./site-build.mjs";
+
 /** Address rules every content tree is linted against: shape, uniqueness, alias. */
 export * as contentLint from "./content-lint.mjs";
 
