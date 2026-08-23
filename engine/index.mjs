@@ -96,6 +96,9 @@ export * as wikilinks from "./wikilinks.mjs";
 /** What a `[[…]]` is, before either resolver decides where it points. */
 export * as wikilinkSyntax from "./wikilink-syntax.mjs";
 
+/** The address index a site build resolves its wikilinks against. */
+export * as siteIndex from "./site-index.mjs";
+
 /** The shape every pack compiler shares. */
 export * as baseCompiler from "./base-compiler.mjs";
 
