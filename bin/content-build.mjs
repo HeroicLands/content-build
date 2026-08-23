@@ -131,7 +131,16 @@ const argv = yargs(hideBin(process.argv))
     .command(reachabilityCommand())
     .version(ownVersion())
     .help()
-    .alias("help", "h").argv;
+    .alias("help", "h")
+    // Every invocation this CLI accepts must be one it performs (#57). yargs
+    // gives neither guarantee by default: without `demandCommand` a bare
+    // `content-build` exits 0 in silence, and without `strict` an unknown
+    // command or option is ignored rather than reported. Both used to read as
+    // success from a `run-s` chain, so a typo in a build script passed the step
+    // it was meant to run. The sibling toolchain `@heroiclands/package-build`
+    // opts into the same two.
+    .demandCommand(1, "Name a command.")
+    .strict().argv;
 
 /**
  * `docs item-fields` — render this repository's item-frontmatter reference.
@@ -146,9 +155,13 @@ const argv = yargs(hideBin(process.argv))
 // eslint-disable-next-line
 function docsCommand() {
     return {
-        command: "docs [action]",
+        command: "docs <action>",
         describe: "Generate documentation from the configured registries",
         builder: (yargs) => {
+            // Required and honoured. It used to be optional and never read:
+            // the handler rendered the item-field reference whatever it was
+            // given, so the positional constrained what could be typed and
+            // selected nothing (#57).
             yargs.positional("action", {
                 describe: "The document to render.",
                 type: "string",
@@ -165,7 +178,14 @@ function docsCommand() {
         },
         handler: (argv) => {
             try {
-                const { out, title } = argv;
+                const { action, out, title } = argv;
+                // Dispatched on, so a second document added here cannot
+                // silently render the first. yargs' `choices` has already
+                // rejected anything unlisted, so the default is unreachable by
+                // a caller — it guards a choice added above without a branch.
+                if (action !== "item-fields") {
+                    throw new Error(`docs: unhandled document "${action}".`);
+                }
                 const md = renderItemFieldReference({
                     ...(title ? { title } : {}),
                     generatedBy: "`content-build docs item-fields`",
@@ -461,9 +481,12 @@ function reachabilityCommand() {
 // eslint-disable-next-line
 function packageCommand() {
     return {
-        command: "package [action] [pack] [entry]",
+        command: "package <action> [pack] [entry]",
         describe: "Manage packages",
         builder: (yargs) => {
+            // Required, not optional: the action *is* the work, and an
+            // optional one meant `content-build package` fell through the
+            // switch below and exited 0 having compiled nothing (#57).
             yargs.positional("action", {
                 describe: "The action to perform.",
                 type: "string",
