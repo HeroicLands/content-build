@@ -89,6 +89,7 @@ export default defineConfig({
     contentPackage: "relics",
     foundryPackage: "sohl-relics",
     packageKind: "modules",
+    compatibility: { minimum: "14.359", verified: "14.359" },
     stats: {
         systemId: "sohl",
         systemVersion: "1.0.0",

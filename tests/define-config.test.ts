@@ -30,6 +30,7 @@ function minimal(): ContentBuildConfigInput {
             lastModifiedBy: "sohlbuilder00000",
         },
         packs: [{ name: "items", type: "Item" }],
+        compatibility: { minimum: "14.359", verified: "14.359" },
     };
 }
 
@@ -300,12 +301,29 @@ describe("defineConfig — the layout a consumer supplies (#1508)", () => {
         ).toEqual(["Templates"]);
     });
 
-    it("carries no Foundry core version — only where to read it from", () => {
-        // The manifest's `compatibility.minimum` moves with test evidence; a
-        // captured copy would silently stop following it.
-        expect(JSON.stringify(defineConfig(minimal()))).not.toMatch(
-            /compatibility|coreVersion/,
-        );
+    it("carries the Foundry core range, which it is now the source of", () => {
+        // This reverses a rule that held until #50: the configuration used to
+        // be forbidden from holding the floor, and pointed at the manifest
+        // instead, because the manifest was hand-authored and moved with test
+        // evidence. Now the manifest is generated *from* here, so pointing at
+        // it would be a round trip through an artifact that need not exist
+        // yet — `build:db` can run before the manifest is written.
+        const config = defineConfig(minimal());
+
+        expect(config.compatibility).toEqual({
+            minimum: "14.359",
+            verified: "14.359",
+        });
+        expect(Object.isFrozen(config.compatibility)).toBe(true);
+    });
+
+    it("keeps `minimum` mandatory, since it is stamped into every document", () => {
+        const { compatibility: _drop, ...without } = minimal();
+        expect(defineConfig(without).compatibility).toBeNull();
+
+        expect(() =>
+            defineConfig({ ...minimal(), compatibility: { verified: "14.4" } }),
+        ).toThrow(/compatibility\.minimum/);
     });
 
     it("freezes the added blocks too", () => {

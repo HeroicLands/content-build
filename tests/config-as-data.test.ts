@@ -44,21 +44,30 @@ import { ITEM_BUILDERS } from "../sohl/item-builders.mjs";
 function minimal(): Record<string, unknown> {
     return {
         contentPackage: "sohl",
-        foundryPackage: "sohl",
         packageKind: "systems",
+        compatibility: { minimum: "14.359" },
         stats: {
             systemId: "sohl",
-            systemVersion: "0.6.0",
             lastModifiedBy: "sohlbuilder00000",
         },
         packs: [{ name: "items", type: "Item" }],
     };
 }
 
-/** A throwaway repository root, `{ fileName: contents }` written verbatim. */
+/**
+ * A throwaway repository root, `{ fileName: contents }` written verbatim.
+ *
+ * Always carries a `package.json`, because a configuration now derives its
+ * Foundry package id and system version from the one beside it. Pass your own
+ * to describe a repository whose manifest says something else.
+ */
 function repoDir(files: Record<string, string> = {}): string {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), "cb-cfg-"));
-    for (const [name, body] of Object.entries(files)) {
+    const withManifest = {
+        "package.json": JSON.stringify({ name: "sohl", version: "1.2.3" }),
+        ...files,
+    };
+    for (const [name, body] of Object.entries(withManifest)) {
         fs.writeFileSync(path.join(root, name), body, "utf8");
     }
     return root;
@@ -93,31 +102,127 @@ describe("what the loader derives from where the file sits", () => {
         ).toThrow(/rootDir/);
     });
 
-    it("reads stats.systemVersion from the adjacent package.json", () => {
-        // The stamp has to equal the version that did the compiling; a
-        // transcribed copy froze at 0.6.0 for four releases (#1548).
+    it("takes the Foundry package id from the adjacent package.json name", () => {
+        // It was transcribed, and a transcription is free to disagree with what
+        // it copies. All three consumers matched — which is what one looks like
+        // right up until it does not.
         const root = repoDir({
-            "package.json": JSON.stringify({ name: "x", version: "1.2.3" }),
+            "package.json": JSON.stringify({
+                name: "sohl-thalorna",
+                version: "0.0.1",
+            }),
         });
+        expect(resolveIn(root, minimal()).foundryPackage).toBe("sohl-thalorna");
+    });
+
+    it("refuses an authored foundryPackage", () => {
+        expect(() =>
+            resolveIn(repoDir(), { ...minimal(), foundryPackage: "elsewhere" }),
+        ).toThrow(/foundryPackage/);
+    });
+
+    it("reads a system's stats.systemVersion from the adjacent package.json", () => {
+        // For a system, `package.json` version *is* the system version. The
+        // stamp has to equal the version that did the compiling; a transcribed
+        // copy froze at 0.6.0 for four releases (#1548).
+        const root = repoDir({
+            "package.json": JSON.stringify({ name: "sohl", version: "1.2.3" }),
+        });
+        expect(resolveIn(root, minimal()).stats.systemVersion).toBe("1.2.3");
+    });
+
+    it("refuses an authored stats.systemVersion", () => {
         const data = minimal();
-        delete (data.stats as Record<string, unknown>).systemVersion;
-        expect(resolveIn(root, data).stats.systemVersion).toBe("1.2.3");
+        (data.stats as Record<string, unknown>).systemVersion = "0.6.0";
+        expect(() => resolveIn(repoDir(), data)).toThrow(/systemVersion/);
     });
 
-    it("still honours a stated systemVersion", () => {
-        // A module shipping SoHL content declares `systemId: sohl`, and the
-        // version beside it is SoHL's — not the module's own.
+    it("throws rather than guessing when a system has no version to read", () => {
         const root = repoDir({
-            "package.json": JSON.stringify({ name: "x", version: "1.2.3" }),
+            "package.json": JSON.stringify({ name: "sohl" }),
         });
-        expect(resolveIn(root, minimal()).stats.systemVersion).toBe("0.6.0");
+        expect(() => resolveIn(root, minimal())).toThrow(/version/);
+    });
+});
+
+describe("a module's system version comes from its system relationship", () => {
+    /** A module shipping SoHL content, as its configuration would say it. */
+    function moduleConfig(verified?: string): Record<string, unknown> {
+        return {
+            ...minimal(),
+            packageKind: "modules",
+            relationships: {
+                systems: [
+                    {
+                        id: "sohl",
+                        type: "system",
+                        ...(verified ?
+                            { compatibility: { minimum: "0.4.0", verified } }
+                        :   {}),
+                    },
+                ],
+            },
+        };
+    }
+
+    it("stamps the verified version of the system it targets", () => {
+        // `verified` and not `minimum`: `_stats.systemVersion` records what the
+        // packs were built against, not the floor they tolerate.
+        const root = repoDir({
+            "package.json": JSON.stringify({
+                name: "sohl-thalorna",
+                version: "0.0.1",
+            }),
+        });
+
+        expect(resolveIn(root, moduleConfig("0.4.3")).stats.systemVersion).toBe(
+            "0.4.3",
+        );
     });
 
-    it("throws rather than guessing when there is no version to read", () => {
+    it("never takes it from the module's own package.json version", () => {
+        // That is the *module's* version — sohl-thalorna sits at 0.0.1 — and
+        // stamping it would claim a SoHL version that has never existed.
+        const root = repoDir({
+            "package.json": JSON.stringify({
+                name: "sohl-thalorna",
+                version: "0.0.1",
+            }),
+        });
+
+        expect(
+            resolveIn(root, moduleConfig("0.4.3")).stats.systemVersion,
+        ).not.toBe("0.0.1");
+    });
+
+    it("fails when the module declares no usable system relationship", () => {
+        // A wrong `_stats.systemVersion` is invisible until something migrates
+        // on it, so this refuses rather than guessing.
+        const data = moduleConfig();
+        expect(() => resolveIn(repoDir(), data)).toThrow(
+            /relationships\.systems/,
+        );
+
+        const none = { ...minimal(), packageKind: "modules" };
+        expect(() => resolveIn(repoDir(), none)).toThrow(
+            /relationships\.systems/,
+        );
+    });
+
+    it("matches the relationship by the systemId it stamps", () => {
         const root = repoDir();
-        const data = minimal();
-        delete (data.stats as Record<string, unknown>).systemVersion;
-        expect(() => resolveIn(root, data)).toThrow(/systemVersion/);
+        const config = resolveIn(root, {
+            ...minimal(),
+            packageKind: "modules",
+            relationships: {
+                systems: [
+                    { id: "other", compatibility: { verified: "9.9.9" } },
+                    { id: "sohl", compatibility: { verified: "0.4.3" } },
+                ],
+            },
+        });
+
+        expect(config.stats.systemVersion).toBe("0.4.3");
     });
 });
 

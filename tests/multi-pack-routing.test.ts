@@ -133,6 +133,7 @@ describe("createPackRouter — which pack a note's document lands in", () => {
 /** A complete configuration with the given packs, rooted anywhere. */
 function baseConfig({ packs, rootDir = os.tmpdir() }: any) {
     return defineConfig({
+        compatibility: { minimum: "14.359", verified: "14.359" },
         rootDir,
         contentPackage: contentPackage(),
         foundryPackage: "sohl",

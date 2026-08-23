@@ -117,6 +117,7 @@ describe("the `_stats` stamp is configuration, not a literal (#1508)", () => {
 
     it("stamps a non-`sohl` consumer's own identity", () => {
         const moduleConfig = defineConfig({
+            compatibility: { minimum: "14.359", verified: "14.359" },
             rootDir: PKG_ROOT,
             contentPackage: "thalorna",
             foundryPackage: "sohl-thalorna",

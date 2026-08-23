@@ -28,17 +28,32 @@ A consuming repository declares one `content-build.config.yaml` at its root:
 ```yaml
 # The value each content note carries in its `package:` frontmatter.
 contentPackage: thalorna
-# The Foundry package id, as it appears in system.json / module.json.
-foundryPackage: sohl-thalorna
 # Where Foundry installs it: "systems" or "modules". Also decides the served
 # asset root a note's `img:` resolves to — `modules/sohl-thalorna/assets/…`.
 packageKind: modules
 
-# Stamped into every compiled document's `_stats`. `coreVersion` is absent on
-# purpose: it is read from the manifest's `compatibility.minimum`. So is
-# `systemVersion` — it is read from the `package.json` beside this file, and is
-# stated here only by a repository shipping content for a version that is not
-# its own.
+# The Foundry core range this package supports. `minimum` is stamped into every
+# compiled document as `_stats.coreVersion`; `verified` names the newest build
+# the full suite has actually passed on — never an aspiration.
+compatibility:
+  minimum: "14.359"
+  verified: "14.364"
+
+# What this package declares about others, in Foundry's own shape. A module's
+# `_stats.systemVersion` comes from the `verified` version of the system it
+# targets — note that this `compatibility` is the *system's* range, not
+# Foundry's. Same key, different subject.
+relationships:
+  systems:
+    - id: sohl
+      type: system
+      manifest: https://github.com/HeroicLands/Song-of-Heroic-Lands-FoundryVTT/releases/latest/download/system.json
+      compatibility:
+        minimum: "0.4.0"
+        verified: "0.4.3"
+
+# Stamped into every compiled document's `_stats`. `coreVersion` and
+# `systemVersion` are both absent on purpose — see the derived table below.
 stats:
   systemId: sohl
   lastModifiedBy: thalornabuild000
@@ -97,19 +112,27 @@ derives `assetRoot`, `packDirectories`, `itemTypes` and `docEntryTypes`, and
 freezes the result. A malformed configuration throws a `TypeError` naming the
 offending field, so it fails at load rather than as an empty pack much later.
 
-**Three values are derived rather than authored**, because each is something a
+**Four values are derived rather than authored**, because each is something a
 file can be asked for rather than told:
 
-| Field                 | Derived from                                                               |
-| --------------------- | -------------------------------------------------------------------------- |
-| `rootDir`             | the directory the configuration file sits in — authoring it is an error    |
-| `stats.systemVersion` | the `version` in the adjacent `package.json`, unless the config states one |
-| `itemBuilders`        | the named registry (`sohl`), required lazily so importing costs nothing    |
+| Field                 | Derived from                                                                                                                      |
+| --------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
+| `rootDir`             | the directory the configuration file sits in                                                                                      |
+| `foundryPackage`      | the `name` of the adjacent `package.json`, verbatim                                                                               |
+| `stats.systemVersion` | a **system**: that `package.json`'s `version`. A **module**: the `verified` version of the system it declares a relationship with |
+| `itemBuilders`        | the named registry (`sohl`), required lazily so importing costs nothing                                                           |
 
-`rootDir` is rejected rather than honoured: any absolute path a data file wrote
-would be one machine's, and the build would then read a tree that exists only
-there. `systemVersion` follows `package.json` because a transcribed copy of it
-froze at `0.6.0` for four releases before anyone noticed.
+**Authoring any of the first three is an error**, not an override. Each was
+previously transcribed from a file that already stated it, and a transcription
+is free to disagree with what it copies — `stats.systemVersion` froze at
+`0.6.0` for four releases before anyone noticed, and was still frozen there in
+two repositories afterwards.
+
+A module does **not** take its system version from its own `package.json`: that
+is the _module's_ version, and stamping it would claim a system version that
+never existed. A module declaring no usable system relationship fails the build
+rather than guessing — a wrong `_stats.systemVersion` is invisible until
+something migrates on it.
 
 ### A registry of your own
 
@@ -123,11 +146,14 @@ import { defineConfig } from "@heroiclands/content-build/config";
 import { ITEM_BUILDERS } from "./build/item-builders.mjs";
 
 export default defineConfig({
-  rootDir: import.meta.dirname, // stated, since nothing derives it here
+  // Stated, since a code configuration derives nothing: it is code, and can
+  // read whatever it likes for itself.
+  rootDir: import.meta.dirname,
   contentPackage: "kethira",
   foundryPackage: "sohl-kethira-basic",
   packageKind: "modules",
-  stats: { systemId: "sohl", systemVersion: "0.6.0", lastModifiedBy: "…" },
+  compatibility: { minimum: "14.359", verified: "14.364" },
+  stats: { systemId: "sohl", systemVersion: "0.4.3", lastModifiedBy: "…" },
   itemBuilders: ITEM_BUILDERS,
   packs: [{ name: "items", type: "Item" }],
 });
@@ -245,7 +271,7 @@ one the compiler holds.
 says _where_ the shipped `system.template.json` / `module.template.json` lives;
 the package-id drift guard and the compiled packs' `_stats.coreVersion` both read
 it from there. The core version itself is deliberately not a config field — it is
-the manifest's `compatibility.minimum`, which moves with test evidence, and a
+the configured `compatibility.minimum`, and a
 copy would silently stop following it.
 
 ### An item type's default art
