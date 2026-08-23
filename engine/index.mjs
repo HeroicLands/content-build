@@ -68,6 +68,9 @@ export * as foreignManifests from "./foreign-manifests.mjs";
 /** The cross-package link manifest: reader, writer, and canonical keys. */
 export * as kbManifest from "./kb-manifest.mjs";
 
+/** Deriving this package's own link manifest from its content tree. */
+export * as manifestEmit from "./manifest-emit.mjs";
+
 /** Address rules every content tree is linted against: shape, uniqueness, alias. */
 export * as contentLint from "./content-lint.mjs";
 

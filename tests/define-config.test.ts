@@ -74,6 +74,7 @@ describe("defineConfig", () => {
         expect(config.publish).toEqual({
             site: true,
             manifests: { publish: true, consume: false },
+            address: { prefix: "", landing: "readme" },
         });
     });
 
@@ -84,6 +85,7 @@ describe("defineConfig", () => {
         expect(config.publish).toEqual({
             site: false,
             manifests: { publish: false, consume: false },
+            address: { prefix: "", landing: "readme" },
         });
     });
 
@@ -221,6 +223,7 @@ describe("defineConfig — the layout a consumer supplies (#1508)", () => {
         expect(config.paths).toEqual({
             content: path.join("/repo", "assets/content"),
             manifests: path.join("/repo", "assets/manifests"),
+            manifestOut: path.join("/repo", "build/manifests"),
             packJson: path.join("/repo", "build/packs-json"),
             stage: path.join("/repo", "build/stage/packs"),
             unpack: path.join("/repo", "build/tmp/packs"),
@@ -502,5 +505,57 @@ describe("the reserved `packageBuild` section", () => {
 
     it("defaults to an empty mapping", () => {
         expect(defineConfig(minimal()).packageBuild).toEqual({});
+    });
+});
+
+describe("the address scheme a repository publishes at (#58)", () => {
+    const address = (value: unknown) =>
+        defineConfig({
+            ...minimal(),
+            publish: { site: true, address: value },
+        }).publish.address;
+
+    it("defaults to the package root under the `readme` rule", () => {
+        expect(defineConfig(minimal()).publish.address).toEqual({
+            prefix: "",
+            landing: "readme",
+        });
+    });
+
+    it("carries a mount prefix for a package whose site is more than content", () => {
+        expect(address({ prefix: "kb/" })).toEqual({
+            prefix: "kb/",
+            landing: "readme",
+        });
+    });
+
+    it("accepts an empty prefix, which is a real layout and not an omission", () => {
+        expect(address({ prefix: "" }).prefix).toBe("");
+    });
+
+    it("rejects a prefix that would fuse to the first section", () => {
+        // A prefix is concatenated, not joined, so `kb` yields
+        // `kbaffliction/` — an address that builds, resolves nowhere, and
+        // reads as a content error rather than a configuration one.
+        expect(() => address({ prefix: "kb" })).toThrow(/must end in a slash/);
+    });
+
+    it("rejects a package-absolute prefix", () => {
+        // A leading slash is the site-absolute shape #1465 removed: it would
+        // record where the package is mounted, which is the consumer's fact.
+        expect(() => address({ prefix: "/kb/" })).toThrow(
+            /must not begin with a slash/,
+        );
+    });
+
+    it("names the landing rules rather than accepting any string", () => {
+        expect(address({ landing: "collection" }).landing).toBe("collection");
+        expect(() => address({ landing: "readmes" })).toThrow(
+            /readme, collection/,
+        );
+    });
+
+    it("rejects an unknown key, as every other section does", () => {
+        expect(() => address({ mount: "kb/" })).toThrow(/not a recognized/);
     });
 });

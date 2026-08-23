@@ -88,6 +88,7 @@ export const PACKAGE_KINDS = /** @type {const} */ (["systems", "modules"]);
 export const DEFAULT_PATHS = /** @type {const} */ ({
     content: "assets/content",
     manifests: "assets/manifests",
+    manifestOut: "build/manifests",
     packJson: "build/packs-json",
     stage: "build/stage/packs",
     unpack: "build/tmp/packs",
@@ -109,6 +110,45 @@ export const PACK_DOCUMENT_TYPES = /** @type {const} */ ([
     "Macro",
     "Scene",
 ]);
+
+/**
+ * The landing-page rules a repository may route by.
+ *
+ * A *landing page* is a note that addresses a whole section rather than a page
+ * within one, so it has no slug of its own. Which note that is differs between
+ * repositories, and both live rules are represented here because switching
+ * either one on for the other repository moves addresses that are already
+ * published:
+ *
+ * - `readme` — a `README.md` **is** its section's landing page. This is `sohl`'s
+ *   rule, and a `doc` note routes by its `category` like any other, so `sohl`'s
+ *   eleven `category: collection` notes publish under a literal `collection/`
+ *   section (`kb/collection/skills/`).
+ * - `collection` — a `doc` note whose `category` is `collection` addresses the
+ *   section it introduces, named by its authored `section`. This is `thalorna`'s
+ *   rule, under which the same note publishes at `creature/`.
+ *
+ * The two are not disjoint and cannot simply both apply: each tree holds notes
+ * the other rule would move.
+ *
+ * @type {readonly string[]}
+ */
+export const LANDING_RULES = Object.freeze(["readme", "collection"]);
+
+/**
+ * A repository's address scheme, with the defaults an unconfigured one gets.
+ *
+ * `prefix` is where the content tree mounts *inside the package* — `"kb/"` for
+ * `sohl`, whose knowledgebase is one surface among several, and empty for
+ * `thalorna`, whose site is nothing but its content. It is not the package's
+ * own mount point: where the package itself is served is the consuming build's
+ * knowledge, held in `PACKAGE_BASE` (`engine/kb-manifest.mjs`) and prefixed at
+ * resolve time, so it is never recorded here (#1465).
+ */
+export const DEFAULT_ADDRESS_SCHEME = Object.freeze({
+    prefix: "",
+    landing: "readme",
+});
 
 /**
  * @typedef {"systems" | "modules"} PackageKind
@@ -175,7 +215,13 @@ export const PACK_DOCUMENT_TYPES = /** @type {const} */ ([
  *
  * @typedef {object} PathsInput
  * @property {string} [content]          Content tree root.
- * @property {string} [manifests]        Vendored cross-package link manifests.
+ * @property {string} [manifests]        Vendored cross-package link manifests,
+ *                                       read by `links`. Inbound.
+ * @property {string} [manifestOut]      Where `manifest` writes this package's
+ *                                       own link manifest. Outbound, and a
+ *                                       build artifact — the published copy is
+ *                                       the one a consumer vendors into its
+ *                                       `manifests` directory.
  * @property {string} [packJson]         Build-only per-entry JSON intermediate.
  * @property {string} [stage]            Compiled LevelDB packs.
  * @property {string} [unpack]           Where `unpack` extracts JSON back to.
@@ -187,6 +233,7 @@ export const PACK_DOCUMENT_TYPES = /** @type {const} */ ([
  * @typedef {object} ResolvedPaths
  * @property {string} content
  * @property {string} manifests
+ * @property {string} manifestOut
  * @property {string} packJson
  * @property {string} stage
  * @property {string} unpack
@@ -478,8 +525,9 @@ const PACK_KEYS = [
 ];
 const PATH_KEYS = Object.keys(DEFAULT_PATHS);
 const STATS_KEYS = ["systemId", "systemVersion", "lastModifiedBy"];
-const PUBLISH_KEYS = ["site", "manifests"];
+const PUBLISH_KEYS = ["site", "manifests", "address"];
 const MANIFEST_KEYS = ["publish", "consume"];
+const ADDRESS_KEYS = ["prefix", "landing"];
 
 /** @param {unknown} value */
 function isPlainObject(value) {
@@ -533,6 +581,22 @@ function optionalBoolean(value, field, fallback) {
     if (value === undefined) return fallback;
     if (typeof value !== "boolean") fail(field, "must be a boolean");
     return /** @type {boolean} */ (value);
+}
+
+/**
+ * A string-valued field with a fallback, rejecting any other type.
+ *
+ * Separate from {@link requireNonEmptyString} because an empty string is a
+ * meaningful value here: an address prefix of `""` is the statement "the
+ * content tree mounts at the package root", which is `thalorna`'s layout.
+ *
+ * @param {unknown} value - The supplied value.
+ * @param {string} field - The field's dotted path, for the error message.
+ * @returns {string} The value.
+ */
+function optionalString(value, field) {
+    if (typeof value !== "string") fail(field, "must be a string");
+    return value;
 }
 
 /**
@@ -956,6 +1020,7 @@ function normalizePublish(value) {
         return Object.freeze({
             site: false,
             manifests: Object.freeze({ publish: false, consume: false }),
+            address: Object.freeze({ ...DEFAULT_ADDRESS_SCHEME }),
         });
     }
     if (!isPlainObject(value)) fail("publish", "must be an object");
@@ -971,8 +1036,43 @@ function normalizePublish(value) {
     );
     rejectUnknownKeys(manifests, MANIFEST_KEYS, "publish.manifests.");
 
+    const addressInput = publish.address;
+    if (addressInput !== undefined && !isPlainObject(addressInput)) {
+        fail("publish.address", "must be an object");
+    }
+    const address = /** @type {Record<string, unknown>} */ (addressInput ?? {});
+    rejectUnknownKeys(address, ADDRESS_KEYS, "publish.address.");
+
+    const prefix =
+        address.prefix === undefined ?
+            DEFAULT_ADDRESS_SCHEME.prefix
+        :   optionalString(address.prefix, "publish.address.prefix");
+    // A prefix is concatenated, not joined, so a missing slash would silently
+    // fuse it to the first section (`kbaffliction/`) — an address that builds,
+    // resolves nowhere, and reads as a content error rather than a config one.
+    if (prefix && !prefix.endsWith("/")) {
+        fail("publish.address.prefix", "must end in a slash when it is set");
+    }
+    if (prefix.startsWith("/")) {
+        // A leading slash would make the recorded address package-absolute,
+        // which is exactly the site-absolute shape #1465 removed.
+        fail("publish.address.prefix", "must not begin with a slash");
+    }
+
+    const landing =
+        address.landing === undefined ?
+            DEFAULT_ADDRESS_SCHEME.landing
+        :   optionalString(address.landing, "publish.address.landing");
+    if (!LANDING_RULES.includes(landing)) {
+        fail(
+            "publish.address.landing",
+            `must be one of ${LANDING_RULES.join(", ")}`,
+        );
+    }
+
     return Object.freeze({
         site: optionalBoolean(publish.site, "publish.site", false),
+        address: Object.freeze({ prefix, landing }),
         manifests: Object.freeze({
             publish: optionalBoolean(
                 manifests.publish,
