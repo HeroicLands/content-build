@@ -1,6 +1,6 @@
 # Development-only configuration for this package's OWN test suite.
 #
-# It is not published — `files` in package.json does not list it — so an
+# It is not published — `files` in package.json does not list `tests` — so an
 # installed copy under `node_modules/@heroiclands/content-build/` never shadows
 # a consuming repository's config.
 #
@@ -11,33 +11,39 @@
 # `tests/import-needs-no-config.test.ts` proves it by working from a copy of the
 # shipped files placed where this file cannot be found.
 #
-# It used to exist for the other reason. Five engine modules resolved the
-# configuration at *module scope*, so importing them threw when the upward walk
-# found nothing — invisible while the package was vendored inside the Song of
-# Heroic Lands repository, whose root config the walk always found. Extracting
-# the package exposed it, and this file stood in until #2 fixed it.
+# WHY IT LIVES HERE rather than at the repository root: the Foundry package id
+# and the system version are derived from the `package.json` beside the
+# configuration (#50). At the root, that is *this toolchain's* manifest —
+# `@heroiclands/content-build`, which is not a Foundry package id and not a game
+# system version. So the configuration sits in a fixture directory with a
+# `package.json` shaped like a consumer's, which is both what makes the
+# derivation meaningful and a more honest fixture than a placeholder pretending
+# to be `sohl` at the root of a package that is not. `vitest.config.ts` points
+# `CONTENT_BUILD_CONFIG` here.
 #
 # The values below are deliberately generic placeholders. Nothing here should
 # be read as the shape a real consumer must adopt — see the README for that.
 #
-# `rootDir` is absent because it is never authored: it is the directory this
-# file sits in, derived by the loader. So is `stats.systemVersion` — except
-# here, where the placeholder version is stated so the suite's assertions do
-# not move every time this package is released.
+# Absent because they are derived, never authored: `rootDir` (the directory
+# this file sits in), `foundryPackage` (the adjacent `package.json` `name`) and
+# `stats.systemVersion` (its `version`, for a system).
 
-# The manifest fixture lives under `tests/`, not at the default
-# `assets/templates`, so this repository does not appear to ship a Foundry
-# package it has no business shipping.
+# The manifest fixture is shared with the other fixtures, one level up.
 paths:
-    packageManifest: tests/fixtures/templates
+    packageManifest: ../templates
 
 contentPackage: sohl
-foundryPackage: sohl
 packageKind: systems
+
+# The Foundry core range this package supports. `minimum` is stamped into every
+# compiled document as `_stats.coreVersion`; `verified` names the newest build
+# the suite has actually passed on — never an aspiration.
+compatibility:
+    minimum: "14.359"
+    verified: "14.359"
 
 stats:
     systemId: sohl
-    systemVersion: 0.0.0
     lastModifiedBy: contentbuild0000
 
 # Named, not supplied: the item-type registry is code, and a data configuration

@@ -14,6 +14,7 @@
 import { describe, it, expect } from "vitest";
 import { createRequire } from "node:module";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 // Imported by relative path, not the `@src` alias, because the pack-build
 // scripts live outside that tree.
 import { ITEM_BUILDERS } from "../sohl/item-builders.mjs";
@@ -21,6 +22,9 @@ import { itemTypes, itemBuilder } from "../engine/item-registry.mjs";
 import { DEFAULT_ITEM_ART } from "../sohl/default-item-art.mjs";
 import { Items } from "../sohl/items.mjs";
 import { loadPackConfig } from "../engine/pack-config.mjs";
+
+/** This package's own root — where its test fixtures live. */
+const PKG_ROOT = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 
 const BUILDERS = ITEM_BUILDERS as Record<string, unknown>;
 
@@ -120,11 +124,17 @@ describe("the art a compiled sohl item actually gets (#7)", () => {
      * content tree: this repository ships no content of its own, and the
      * compiler's constructor insists the tree exist. Nothing here walks it —
      * `buildEntry` is handed its frontmatter directly.
+     *
+     * Anchored on *this package's* root rather than the configured one. Those
+     * were the same directory until the development configuration moved into
+     * `tests/fixtures/repo/` to have a `package.json` to derive its identity
+     * from (#50); where the fixtures live is a fact about this repository's
+     * layout, not about whatever tree a configuration happens to point at.
      */
     function compiler() {
         const config = loadPackConfig();
         return new Items({
-            contentBase: path.join(config.rootDir, "tests/fixtures"),
+            contentBase: path.join(PKG_ROOT, "tests/fixtures"),
             dest: config.paths.packJson,
         });
     }

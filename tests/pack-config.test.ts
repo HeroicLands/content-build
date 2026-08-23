@@ -78,15 +78,21 @@ describe("this repository's resolved pack configuration", () => {
     });
 
     it("resolves every path against the configured root, not the cwd", () => {
+        // The configured root is the fixture repository, not this package's
+        // own: the development configuration moved there to have a
+        // `package.json` to derive its identity from (#50).
         for (const [key, value] of Object.entries(packConfig.paths)) {
             expect(path.isAbsolute(value as string), key).toBe(true);
             expect(String(value).startsWith(PKG_ROOT), key).toBe(true);
         }
+        expect(packConfig.rootDir).toBe(
+            path.join(PKG_ROOT, "tests/fixtures/repo"),
+        );
         expect(packConfig.paths.content).toBe(
-            path.join(PKG_ROOT, "assets/content"),
+            path.join(packConfig.rootDir, "assets/content"),
         );
         expect(packConfig.paths.packJson).toBe(
-            path.join(PKG_ROOT, "build/packs-json"),
+            path.join(packConfig.rootDir, "build/packs-json"),
         );
     });
 
@@ -150,7 +156,10 @@ describe("the one pack list (#1508 — SOURCE_PACKS and PACK_CONFIGS merged)", (
 });
 
 describe("the manifest location is hoisted once, not twice (#1508)", () => {
-    it("is the one path both the id guard and the core-version stamp read", () => {
+    // The core-version stamp no longer reads it (#50); the package-id guard
+    // still does, until package-build generates the manifest and the id stops
+    // being declared twice.
+    it("is the one path every reader of the manifest resolves", () => {
         const dir = templateDir({
             "system.template.json": {
                 id: "sohl",
@@ -161,9 +170,6 @@ describe("the manifest location is hoisted once, not twice (#1508)", () => {
 
         expect(readManifestPackageId(dir).manifestPath).toBe(resolved);
         expect(readPackageManifest(dir).manifestPath).toBe(resolved);
-        // The stamp reads the same file, so the two can never name different
-        // manifests — the drift this issue exists to remove.
-        expect(supportedCoreVersion(dir)).toBe("14.401");
     });
 
     it("tolerates a module repository's module.template.json", () => {
@@ -173,7 +179,6 @@ describe("the manifest location is hoisted once, not twice (#1508)", () => {
                 compatibility: { minimum: "14.377" },
             },
         });
-        expect(supportedCoreVersion(dir)).toBe("14.377");
         expect(readManifestPackageId(dir).packageId).toBe("sohl-thalorna");
     });
 
@@ -181,51 +186,41 @@ describe("the manifest location is hoisted once, not twice (#1508)", () => {
         expect(resolvePackageManifestPath()).toBe(
             path.join(packConfig.paths.packageManifest, "system.template.json"),
         );
-        expect(supportedCoreVersion()).toBe(MANIFEST.compatibility.minimum);
     });
 });
 
-describe("the core version is a path in config, never a captured value", () => {
-    it("follows a manifest that declares a different floor", () => {
-        // The acceptance test for the hoist: config says *where* the manifest
-        // is; the value is always read from it. A literal in config would make
-        // both of these read the same number.
-        const older = templateDir({
-            "system.template.json": {
-                id: "sohl",
-                compatibility: { minimum: "14.359" },
-            },
+describe("the core version is configuration, and the config is its source", () => {
+    // This reverses what this file asserted until #50. The rule *was* that
+    // configuration may say only where the manifest is, never what it holds,
+    // because the manifest was hand-authored and moved with test evidence — a
+    // captured copy would silently stop following it.
+    //
+    // package-build now generates the manifest *from* this configuration, so
+    // there is nothing left to follow: reading it back would be a round trip
+    // through an artifact that need not exist yet, since `build:db` can run
+    // before the manifest is written. The direction of truth flipped, and the
+    // guard flips with it.
+
+    it("stamps the floor the configuration declares", () => {
+        expect(supportedCoreVersion()).toBe(packConfig.compatibility.minimum);
+    });
+
+    it("follows the configuration rather than any manifest", () => {
+        // The two disagree deliberately: the fixture manifest is now only what
+        // the package-id guard reads, and no longer feeds the stamp.
+        const fromConfig = supportedCoreVersion({
+            compatibility: { minimum: "14.900" },
         });
-        const newer = templateDir({
-            "system.template.json": {
-                id: "sohl",
-                compatibility: { minimum: "14.900" },
-            },
-        });
-        expect(supportedCoreVersion(older)).toBe("14.359");
-        expect(supportedCoreVersion(newer)).toBe("14.900");
+
+        expect(fromConfig).toBe("14.900");
+        expect(fromConfig).not.toBe(MANIFEST.compatibility.minimum);
     });
 
-    it("carries no core version anywhere in the configuration", () => {
-        // If the floor were captured, a PR moving it would silently stop
-        // reaching the pack stamp. Nothing in config may hold the number.
-        expect(JSON.stringify(packConfig)).not.toContain(
-            MANIFEST.compatibility.minimum,
-        );
-    });
-
-    it("throws rather than falling back when there is no manifest", () => {
-        // Blocker #1: the loud failure is the feature. A silent fallback is how
-        // every pack came to ship `coreVersion: "14"` (#1533).
-        const empty = fs.mkdtempSync(
-            path.join(os.tmpdir(), "sohl-nomanifest-"),
-        );
-        expect(() => supportedCoreVersion(empty)).toThrow();
-    });
-
-    it("throws when the manifest declares no compatibility floor", () => {
-        const dir = templateDir({ "system.template.json": { id: "sohl" } });
-        expect(() => supportedCoreVersion(dir)).toThrow(
+    it("throws rather than falling back when none is declared", () => {
+        // The loud failure is the feature, and survives the reversal above. A
+        // silent fallback is how every pack came to ship `coreVersion: "14"`,
+        // which sorts below every v14 build (#1533).
+        expect(() => supportedCoreVersion({ compatibility: null })).toThrow(
             /compatibility\.minimum/,
         );
     });

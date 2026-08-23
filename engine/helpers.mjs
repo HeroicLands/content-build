@@ -266,55 +266,42 @@ export function resolveName(fm, defaultValue = "Unnamed") {
     return defaultValue;
 }
 
-/** Memoised {@link supportedCoreVersion}, keyed by manifest directory. */
-const cachedCoreVersion = new Map();
-
 /**
- * The Foundry core version compiled documents declare, taken from the
- * manifest's own `compatibility.minimum`.
+ * The oldest Foundry core this package supports, stamped into every compiled
+ * document as `_stats.coreVersion`.
  *
  * **Derived, never written twice.** `_stats.coreVersion` is what Foundry gates
  * its migration shims on: a record stamped older than a shim is rewritten by it
- * on load. Every pack shipped `coreVersion: "14"`, which sorts *below* every
- * v14 build and so left all shipped content permanently eligible for every v14
- * migration — including `Scene`'s `migrateLevels`, an unconditional
- * `levels = [synthesised]` that discarded an authored Level and its map image
- * without a word (#1533).
+ * on load. Every pack once shipped `coreVersion: "14"`, which sorts *below*
+ * every v14 build and so left all shipped content permanently eligible for
+ * every v14 migration (#1533).
  *
- * Stamping the supported floor is honest — the manifest refuses to load on an
- * older core, so no client can legitimately need those migrations — and it is
- * only *safe* because of that refusal, which is why the two must be one value.
- * A literal here, or in configuration, would rot apart from the manifest the
- * moment the floor moved, and the failure would again be silent. Configuration
- * therefore supplies only *where the manifest is* (#1508).
+ * **Read from the configuration, not from the shipped manifest.** It used to
+ * open `paths.packageManifest` and take `compatibility.minimum` out of it,
+ * because the configuration had no way to state the fact. Now that it does, the
+ * manifest is generated *from* the configuration — so reading it back would be
+ * a round trip through an artifact that need not exist yet: `build:db` can run
+ * before the manifest is written.
  *
- * The manifest is located through {@link resolvePackageManifestPath}, the same
- * resolution the package-id guard uses — one hoisted location, not two — which
- * also replaces the module-relative path this used to resolve. That path was
- * correct while the toolchain was vendored and would have pointed inside
- * `node_modules/@heroiclands/content-build/` once it is installed.
+ * Absent is a hard failure, not a default. A guessed floor is stamped into
+ * every document in the pack and stays invisible until something migrates on
+ * it, which is exactly why the manifest read threw rather than falling back.
  *
- * @param {string} [templateDir] - Directory holding the manifest template.
- *   Defaults to the configured location.
- * @returns {string} The manifest's declared minimum core version.
- * @throws {Error} When the manifest cannot be read or declares no minimum —
- *   a silent fallback is how the original defect shipped.
+ * @param {{compatibility: {minimum: string}|null}} [config] - The resolved
+ *   configuration. Defaults to this repository's.
+ * @returns {string} The declared `compatibility.minimum`.
+ * @throws {Error} When the configuration declares no `compatibility.minimum`.
  */
-export function supportedCoreVersion(
-    templateDir = loadPackConfig().paths.packageManifest,
-) {
-    const cached = cachedCoreVersion.get(templateDir);
-    if (cached) return cached;
-
-    const { manifestPath, manifest } = readPackageManifest(templateDir);
-    const minimum = manifest?.compatibility?.minimum;
+export function supportedCoreVersion(config = loadPackConfig()) {
+    const minimum = config.compatibility?.minimum;
     if (!minimum) {
         throw new Error(
-            `${manifestPath} declares no compatibility.minimum, so compiled ` +
-                `documents have no honest core version to stamp`,
+            "content-build: the configuration declares no " +
+                "`compatibility.minimum`, so compiled documents have no " +
+                "honest core version to stamp. Declare it at the top level of " +
+                "content-build.config.yaml.",
         );
     }
-    cachedCoreVersion.set(templateDir, String(minimum));
     return String(minimum);
 }
 
@@ -324,7 +311,7 @@ export function supportedCoreVersion(
  * Every stamped identity is configuration (#1508): four compilers used to pass
  * the same frozen `"0.6.0"` literal, and `systemId` / `lastModifiedBy` were
  * written into this function. `coreVersion` alone is *not* configuration — it
- * comes from {@link supportedCoreVersion}, the manifest's own supported floor,
+ * comes from {@link supportedCoreVersion}, the configured Foundry floor,
  * so a document never claims to predate the migrations that would rewrite it.
  *
  * @param {string} [systemVersion] - The system version to stamp. Defaults to the
@@ -341,7 +328,7 @@ export function buildStats(
     return {
         systemId: config.stats.systemId,
         systemVersion: systemVersion ?? config.stats.systemVersion,
-        coreVersion: supportedCoreVersion(config.paths.packageManifest),
+        coreVersion: supportedCoreVersion(config),
         createdTime: 0,
         modifiedTime: 0,
         lastModifiedBy: config.stats.lastModifiedBy,

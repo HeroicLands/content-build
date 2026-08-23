@@ -27,6 +27,10 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import { defineConfig } from "../index.mjs";
 import { buildStats as buildStatsRaw } from "../engine/helpers.mjs";
 import { countContentNotes } from "../engine/content-tree.mjs";
+import {
+    resolvePackageManifestPath,
+    readManifestPackageId,
+} from "../engine/package-manifest.mjs";
 
 // The pack helpers are plain ESM whose JSDoc types the return as `object`.
 const buildStats = (systemVersion?: string, config?: unknown): any =>
@@ -89,9 +93,18 @@ function sandbox(coreVersion: string): string {
     return root;
 }
 
-/** The configuration such a consumer writes: nothing but relocated paths. */
-function configFor(root: string) {
+/**
+ * The configuration such a consumer writes: relocated paths, and the Foundry
+ * floor it supports.
+ *
+ * The floor is declared here rather than read out of the manifest in the
+ * sandbox (#50). The sandbox still writes one, because the package-id guard
+ * reads it — but it no longer feeds the stamp, and the two are deliberately
+ * allowed to disagree in the cases below.
+ */
+function configFor(root: string, coreVersion = "14.359") {
     return defineConfig({
+        compatibility: { minimum: coreVersion, verified: coreVersion },
         rootDir: root,
         contentPackage: "elsewhere",
         foundryPackage: "sohl-elsewhere",
@@ -134,32 +147,37 @@ describe("a consumer that moves a directory is honoured (#1508)", () => {
 
     it("finds a module repository's manifest in the moved directory", () => {
         // A module ships `module.template.json`, and this one is not under
-        // `assets/templates` at all. Both facts have to come from config.
-        expect(buildStats(undefined, config).coreVersion).toBe("14.412");
+        // `assets/templates` at all. Both facts still have to come from config
+        // — the package-id guard reads the manifest even though the stamp no
+        // longer does.
+        expect(resolvePackageManifestPath(config.paths.packageManifest)).toBe(
+            path.join(config.paths.packageManifest, "module.template.json"),
+        );
+        expect(
+            readManifestPackageId(config.paths.packageManifest).packageId,
+        ).toBe("sohl-elsewhere");
     });
 });
 
-describe("the core version is a path in configuration, never a value", () => {
-    it("follows the manifest, with configuration untouched", () => {
-        // The acceptance property: move `compatibility.minimum` and the stamp
-        // moves, without a single character of config changing. The two trees
-        // are built by the same `configFor`, so the only difference between
-        // them is the number written into the manifest.
-        //
-        // Two trees rather than one rewritten in place because
-        // `supportedCoreVersion` memoises per manifest directory — a rewrite
-        // under the same path would be answered from the cache and prove
-        // nothing.
-        const older = configFor(sandbox("14.360"));
-        const newer = configFor(sandbox("14.999"));
+describe("the core version is configuration, and the stamp follows it", () => {
+    it("moves with the declared floor", () => {
+        // Two configurations differing only in the floor they declare.
+        const older = configFor(sandbox("14.001"), "14.360");
+        const newer = configFor(sandbox("14.001"), "14.999");
 
         expect(buildStats(undefined, older).coreVersion).toBe("14.360");
         expect(buildStats(undefined, newer).coreVersion).toBe("14.999");
+    });
 
-        // If the floor had been captured into config, it would be findable
-        // there — and a manifest bump would silently stop reaching the stamp.
-        expect(JSON.stringify(older)).not.toContain("14.360");
-        expect(JSON.stringify(newer)).not.toContain("14.999");
+    it("ignores what the manifest in the tree happens to say", () => {
+        // The direction of truth reversed in #50: package-build generates the
+        // manifest *from* the configuration, so reading it back would be a
+        // round trip through an artifact that need not exist yet — `build:db`
+        // can run before it is written. Here the sandbox's manifest says
+        // something else entirely and is correctly disregarded.
+        const config = configFor(sandbox("14.001"), "14.500");
+
+        expect(buildStats(undefined, config).coreVersion).toBe("14.500");
     });
 });
 
@@ -175,6 +193,7 @@ describe("path resolution does not depend on the working directory", () => {
             const { defineConfig } = await import(${JSON.stringify(CONFIG_URL)});
             const { buildStats } = await import(${JSON.stringify(HELPERS_URL)});
             const config = defineConfig({
+                compatibility: { minimum: "14.377", verified: "14.377" },
                 rootDir: ${JSON.stringify(root)},
                 contentPackage: "elsewhere",
                 foundryPackage: "sohl-elsewhere",

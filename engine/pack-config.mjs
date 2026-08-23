@@ -182,27 +182,113 @@ const ITEM_BUILDER_REGISTRIES = Object.freeze({
  *   version. Guessing one would produce documents claiming a version nothing
  *   ever shipped.
  */
-function shippedSystemVersion(rootDir) {
+function readPackageJson(rootDir) {
     const manifestPath = path.join(rootDir, "package.json");
-    let version;
     try {
-        version = JSON.parse(fs.readFileSync(manifestPath, "utf8")).version;
+        return {
+            manifestPath,
+            pkg: JSON.parse(fs.readFileSync(manifestPath, "utf8")),
+        };
     } catch (err) {
         throw new Error(
-            `content-build: stats.systemVersion is not declared, and ` +
-                `${manifestPath} could not be read to derive it. Either state ` +
-                `the version in the configuration, or put it in package.json ` +
-                `beside the configuration.`,
+            `content-build: ${manifestPath} could not be read, and the ` +
+                `configuration derives both the Foundry package id and the ` +
+                `system version from it.`,
             { cause: err },
         );
     }
-    if (typeof version !== "string" || version.length === 0) {
+}
+
+/**
+ * The Foundry package id, from the `name` of the adjacent `package.json`.
+ *
+ * Every project in this organisation carries a unique name by requirement, and
+ * each `package.json` `name` maps directly onto its Foundry package id — all
+ * three consumers matched exactly when this was still transcribed. So the value
+ * is used **verbatim**: no normalisation, no legality check.
+ *
+ * That is a decision rather than an omission. A scoped npm name (`@scope/pkg`)
+ * is not a legal Foundry id, but these packages are private and therefore never
+ * scoped, so the case does not arise; guarding it would be inventing a rule the
+ * project does not have.
+ *
+ * @param {string} rootDir - The directory the configuration sits in.
+ * @returns {string} The package id.
+ * @throws {Error} When `package.json` declares no name.
+ */
+function foundryPackageId(rootDir) {
+    const { manifestPath, pkg } = readPackageJson(rootDir);
+    if (typeof pkg.name !== "string" || pkg.name.length === 0) {
         throw new Error(
-            `content-build: stats.systemVersion is not declared, and ` +
-                `${manifestPath} declares no \`version\` to derive it from.`,
+            `content-build: ${manifestPath} declares no \`name\`, which is ` +
+                `what the Foundry package id is derived from.`,
         );
     }
-    return version;
+    return pkg.name;
+}
+
+/**
+ * The version of the game system a repository ships content *for*.
+ *
+ * The two package kinds derive it from different places, and the distinction is
+ * the whole point:
+ *
+ * - A **system** ships itself, so its own `package.json` version *is* the
+ *   system version. That is the read #1548 introduced after a transcribed copy
+ *   froze at `0.6.0` for four releases.
+ * - A **module** ships content *for* someone else's system. Its own version is
+ *   the module's — `sohl-thalorna` sits at `0.0.1` — so deriving from it would
+ *   stamp a SoHL version that has never existed, which is worse than a frozen
+ *   one that at least was once true. The honest source is the system
+ *   relationship the module already declares, and specifically `verified`:
+ *   `_stats.systemVersion` records what the packs were built against, not the
+ *   floor they tolerate.
+ *
+ * @param {string} rootDir - The directory the configuration sits in.
+ * @param {Record<string, unknown>} input - The configuration being resolved.
+ * @returns {string} The system version to stamp.
+ * @throws {Error} When a module declares no usable system relationship. A wrong
+ *   `_stats.systemVersion` is invisible until something migrates on it, so this
+ *   fails rather than guessing.
+ */
+function shippedSystemVersion(rootDir, input) {
+    if (input.packageKind === "systems") {
+        const { manifestPath, pkg } = readPackageJson(rootDir);
+        if (typeof pkg.version !== "string" || pkg.version.length === 0) {
+            throw new Error(
+                `content-build: ${manifestPath} declares no \`version\`, ` +
+                    `which is what a system's stats.systemVersion is derived ` +
+                    `from.`,
+            );
+        }
+        return pkg.version;
+    }
+
+    const systemId = /** @type {Record<string, unknown>} */ (input.stats ?? {})
+        .systemId;
+    const systems =
+        /** @type {{id?: string, compatibility?: {verified?: string}}[]} */ (
+            /** @type {Record<string, unknown>} */ (input.relationships ?? {})
+                .systems
+        ) ?? [];
+    const relationship =
+        systems.find((entry) => entry?.id === systemId) ?? systems[0];
+    const verified = relationship?.compatibility?.verified;
+
+    if (typeof verified !== "string" || verified.length === 0) {
+        throw new Error(
+            `content-build: a module's stats.systemVersion is derived from ` +
+                `the system it declares a relationship with, and this ` +
+                `configuration declares none usable. Add ` +
+                `\`relationships.systems\` naming ` +
+                `${systemId ? `\`${systemId}\`` : "the system"} with a ` +
+                `\`compatibility.verified\` version. It is not taken from ` +
+                `this package's own \`package.json\` version — that is the ` +
+                `module's version, and stamping it would claim a system ` +
+                `version that never existed.`,
+        );
+    }
+    return verified;
 }
 
 /**
@@ -252,6 +338,19 @@ export function configFromData(data, configPath) {
     }
     input.rootDir = rootDir;
 
+    // Transcribed from `package.json`, and therefore free to disagree with it.
+    // Every consumer's copy matched exactly, which is what a transcription
+    // looks like right up until it does not (#1548 froze one at `0.6.0` for
+    // four releases while nothing said so).
+    if (input.foundryPackage !== undefined) {
+        throw new Error(
+            `content-build: ${configPath} declares \`foundryPackage\`, which ` +
+                `a data configuration may not: it is the \`name\` of the ` +
+                `\`package.json\` beside it. Remove the key.`,
+        );
+    }
+    input.foundryPackage = foundryPackageId(rootDir);
+
     if (input.itemBuilders !== undefined) {
         const named = input.itemBuilders;
         const known = Object.keys(ITEM_BUILDER_REGISTRIES).join(", ");
@@ -276,16 +375,21 @@ export function configFromData(data, configPath) {
     }
 
     const stats = input.stats;
-    if (
-        stats !== null &&
-        typeof stats === "object" &&
-        !Array.isArray(stats) &&
-        /** @type {Record<string, unknown>} */ (stats).systemVersion ===
-            undefined
-    ) {
+    if (stats !== null && typeof stats === "object" && !Array.isArray(stats)) {
+        const declared = /** @type {Record<string, unknown>} */ (stats);
+        if (declared.systemVersion !== undefined) {
+            throw new Error(
+                `content-build: ${configPath} declares ` +
+                    `\`stats.systemVersion\`, which a data configuration may ` +
+                    `not: a system derives it from the \`version\` of the ` +
+                    `\`package.json\` beside it, and a module from the ` +
+                    `\`compatibility.verified\` of the system it declares a ` +
+                    `relationship with. Remove the key.`,
+            );
+        }
         input.stats = {
-            .../** @type {Record<string, unknown>} */ (stats),
-            systemVersion: shippedSystemVersion(rootDir),
+            ...declared,
+            systemVersion: shippedSystemVersion(rootDir, input),
         };
     }
 

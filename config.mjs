@@ -257,6 +257,55 @@ export const PACK_DOCUMENT_TYPES = /** @type {const} */ ([
  */
 
 /**
+ * The **Foundry core** version range this package supports.
+ *
+ * `minimum` is stamped into every compiled document as `_stats.coreVersion`, so
+ * a document never claims to predate the migrations that would rewrite it.
+ *
+ * `verified` names the newest build the full suite has **actually passed** —
+ * never an aspiration. Moving this out of the hand-authored manifest and into a
+ * configuration file does not soften that; if anything it makes the claim
+ * easier to edit casually, so it is written down here beside the key rather
+ * than left behind in the template.
+ *
+ * Not to be confused with `relationships.systems[].compatibility`, which is the
+ * **game system's** version range. Same key, different subject.
+ *
+ * @typedef {object} CompatibilitySpec
+ * @property {string} minimum   Oldest Foundry core this package supports.
+ * @property {string} [verified]  Newest Foundry core the suite has passed on.
+ */
+
+/**
+ * What this package declares about other packages, in Foundry's own shape.
+ *
+ * Passed through to the shipped manifest, and read here for one derivation: a
+ * module's `_stats.systemVersion` comes from the `verified` field of the system
+ * it declares a relationship with, because a module's own `package.json`
+ * version is the *module's* and stamping it would claim a system version that
+ * never existed.
+ *
+ * @typedef {object} Relationships
+ * @property {RelationshipSpec[]} [systems]  Game systems this package targets.
+ * @property {RelationshipSpec[]} [requires]  Packages this one needs.
+ * @property {RelationshipSpec[]} [recommends]  Packages it works well with.
+ * @property {RelationshipSpec[]} [conflicts]  Packages it cannot run beside.
+ */
+
+/**
+ * One declared relationship.
+ *
+ * @typedef {object} RelationshipSpec
+ * @property {string} id             The other package's id.
+ * @property {string} [type]         `system`, `module`, or `world`.
+ * @property {string} [manifest]     Where its manifest is published.
+ * @property {CompatibilitySpec} [compatibility]  The version range of *that*
+ *                                   package this one targets — for a system
+ *                                   relationship, `verified` is what
+ *                                   `_stats.systemVersion` is stamped from.
+ */
+
+/**
  * @typedef {object} PublishSwitchesInput
  * @property {boolean} [site]
  * @property {ManifestSwitchesInput} [manifests]
@@ -315,6 +364,14 @@ export const PACK_DOCUMENT_TYPES = /** @type {const} */ ([
  * @property {PackageBuildSection} [packageBuild]  Reserved for
  *                                          `@heroiclands/package-build`, which
  *                                          validates it. Not read here.
+ * @property {CompatibilitySpec} [compatibility]  The Foundry core range this
+ *                                          package supports. Required for any
+ *                                          repository that ships one — reading
+ *                                          the floor throws without it — and
+ *                                          absent for a content-only consumer,
+ *                                          which has none to invent.
+ * @property {Relationships} [relationships]  What this package declares about
+ *                                          others, in Foundry's own shape.
  * @property {PublishSwitchesInput} [publish]  Publishing switches. Each defaults to off.
  */
 
@@ -358,6 +415,9 @@ export const PACK_DOCUMENT_TYPES = /** @type {const} */ ([
  *                                     each pack followed by its companions.
  * @property {Readonly<PackageBuildSection>} packageBuild  Passed through
  *                                     frozen, uninterpreted. `{}` when absent.
+ * @property {Readonly<CompatibilitySpec>|null} compatibility  The Foundry core
+ *                                     range, or `null` when none is declared.
+ * @property {Readonly<Relationships>} relationships  Frozen; `{}` when absent.
  * @property {Readonly<PublishSwitches>} publish
  */
 
@@ -371,9 +431,14 @@ const CONFIG_KEYS = [
     "paths",
     "skipDirectories",
     "packs",
+    "compatibility",
+    "relationships",
     "packageBuild",
     "publish",
 ];
+const COMPATIBILITY_KEYS = ["minimum", "verified"];
+const RELATIONSHIP_KINDS = ["systems", "requires", "recommends", "conflicts"];
+const RELATIONSHIP_KEYS = ["id", "type", "manifest", "compatibility"];
 const ITEM_BUILDER_KEYS = ["system", "img", "fields"];
 const PACK_KEYS = [
     "name",
@@ -595,6 +660,90 @@ function deepFreeze(value) {
     if (value === null || typeof value !== "object") return value;
     for (const inner of Object.values(value)) deepFreeze(inner);
     return Object.freeze(value);
+}
+
+/**
+ * Validate a Foundry version range.
+ *
+ * `minimum` is required of the package's own range, because it is stamped into
+ * every compiled document and a guessed floor is invisible until something
+ * migrates on it. Inside a *relationship* neither field is required: what is
+ * load-bearing there is `verified`, and a relationship may reasonably name a
+ * package without pinning a floor at all.
+ *
+ * @param {unknown} value - The declared range, or `undefined`.
+ * @param {string} where - Dotted path, for the error.
+ * @param {boolean} [requireMinimum] - Whether `minimum` must be present.
+ * @returns {Readonly<CompatibilitySpec>|null} It, frozen; `null` when absent.
+ */
+function normalizeCompatibility(value, where, requireMinimum = true) {
+    if (value === undefined) return null;
+    if (!isPlainObject(value)) fail(where, "must be a mapping");
+    const input = /** @type {Record<string, unknown>} */ (value);
+    rejectUnknownKeys(input, COMPATIBILITY_KEYS, `${where}.`);
+    const out = {};
+    if (requireMinimum || input.minimum !== undefined) {
+        out.minimum = requireNonEmptyString(input.minimum, `${where}.minimum`);
+    }
+    if (input.verified !== undefined) {
+        out.verified = requireNonEmptyString(
+            input.verified,
+            `${where}.verified`,
+        );
+    }
+    return Object.freeze(out);
+}
+
+/**
+ * Validate the declared relationships.
+ *
+ * Only as far as this package needs to read them: enough that a system
+ * relationship can be found and its `verified` version trusted. The rest is
+ * passed through for the manifest generator to emit.
+ *
+ * @param {unknown} value - The `relationships` block, or `undefined`.
+ * @returns {Readonly<Relationships>} It, frozen; `{}` when absent.
+ */
+function normalizeRelationships(value) {
+    if (value === undefined) return Object.freeze({});
+    if (!isPlainObject(value)) fail("relationships", "must be a mapping");
+    const input = /** @type {Record<string, unknown>} */ (value);
+    rejectUnknownKeys(input, RELATIONSHIP_KINDS, "relationships.");
+
+    const out = {};
+    for (const kind of RELATIONSHIP_KINDS) {
+        if (input[kind] === undefined) continue;
+        if (!Array.isArray(input[kind])) {
+            fail(`relationships.${kind}`, "must be a list");
+        }
+        out[kind] = Object.freeze(
+            input[kind].map((entry, index) => {
+                const at = `relationships.${kind}[${index}]`;
+                if (!isPlainObject(entry)) fail(at, "must be a mapping");
+                const rel = /** @type {Record<string, unknown>} */ (entry);
+                rejectUnknownKeys(rel, RELATIONSHIP_KEYS, `${at}.`);
+                const spec = {
+                    id: requireNonEmptyString(rel.id, `${at}.id`),
+                };
+                for (const key of ["type", "manifest"]) {
+                    if (rel[key] !== undefined) {
+                        spec[key] = requireNonEmptyString(
+                            rel[key],
+                            `${at}.${key}`,
+                        );
+                    }
+                }
+                const compat = normalizeCompatibility(
+                    rel.compatibility,
+                    `${at}.compatibility`,
+                    false,
+                );
+                if (compat) spec.compatibility = compat;
+                return Object.freeze(spec);
+            }),
+        );
+    }
+    return Object.freeze(out);
 }
 
 /**
@@ -891,6 +1040,11 @@ export function defineConfig(config) {
         skipDirectories: Object.freeze(skipDirectories),
         packs: Object.freeze(packs),
         packDirectories: Object.freeze(packDirectories),
+        compatibility: normalizeCompatibility(
+            input.compatibility,
+            "compatibility",
+        ),
+        relationships: normalizeRelationships(input.relationships),
         packageBuild: normalizePackageBuild(input.packageBuild),
         publish: normalizePublish(input.publish),
     });
