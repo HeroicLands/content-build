@@ -19,8 +19,8 @@
  *
  * ```yaml
  * contentPackage: sohl
- * foundryPackage: sohl
  * packageKind: systems
+ * compatibility: { minimum: "14.359", verified: "14.364" }
  * stats:
  *     systemId: sohl
  *     lastModifiedBy: sohlbuilder00000
@@ -52,13 +52,14 @@
  * `defineConfig` below directly with a `rootDir` of `import.meta.dirname`.
  * Both forms end here, so both are validated and frozen identically.
  *
- * **Configuration supplies paths, never captured values (#1508).** `rootDir`
- * anchors every path so the build reads the same files whatever directory it
- * was launched from, and `paths.packageManifest` is the *one* place the shipped
- * Foundry manifest is located — the package-id guard and the compiled packs'
- * `_stats.coreVersion` stamp both read it from there. The core version itself is
- * deliberately absent: it lives in the manifest's `compatibility.minimum`, which
- * moves with test evidence, and a copy here would silently stop following it.
+ * **`rootDir` anchors every path**, so the build reads the same files whatever
+ * directory it was launched from (#1508).
+ *
+ * The Foundry floor is declared here as top-level `compatibility`, and the
+ * shipped manifest is generated *from* this file. That reverses an older rule —
+ * configuration named where the manifest was and read the floor back out of it —
+ * which was right while the manifest was hand-authored and became a round trip
+ * through a generated artifact once it was not (#50, package-build#9).
  *
  * @module
  */
@@ -83,9 +84,6 @@ export const PACKAGE_KINDS = /** @type {const} */ (["systems", "modules"]);
  * with the layout a HeroicLands content repository conventionally uses. A
  * consumer overrides only the ones it moves.
  *
- * `packageManifest` is the directory holding `system.template.json` or
- * `module.template.json` — hoisted once, and read by both the package-id drift
- * guard and the `_stats.coreVersion` stamp (#1508).
  */
 export const DEFAULT_PATHS = /** @type {const} */ ({
     content: "assets/content",
@@ -177,7 +175,6 @@ export const PACK_DOCUMENT_TYPES = /** @type {const} */ ([
  *
  * @typedef {object} PathsInput
  * @property {string} [content]          Content tree root.
- * @property {string} [packageManifest]  Directory holding the Foundry manifest template.
  * @property {string} [manifests]        Vendored cross-package link manifests.
  * @property {string} [packJson]         Build-only per-entry JSON intermediate.
  * @property {string} [stage]            Compiled LevelDB packs.
@@ -189,7 +186,6 @@ export const PACK_DOCUMENT_TYPES = /** @type {const} */ ([
  *
  * @typedef {object} ResolvedPaths
  * @property {string} content
- * @property {string} packageManifest
  * @property {string} manifests
  * @property {string} packJson
  * @property {string} stage
@@ -199,9 +195,8 @@ export const PACK_DOCUMENT_TYPES = /** @type {const} */ ([
 /**
  * The identity every compiled document's `_stats` block carries.
  *
- * `coreVersion` is **not** here: it is read from the manifest at
- * `paths.packageManifest`, so it always follows the floor the package actually
- * declares (#1508).
+ * `coreVersion` is **not** here: it is the top-level `compatibility.minimum`,
+ * so the floor is declared in one place and stamped from it.
  *
  * @typedef {object} StatsSpec
  * @property {string} systemId          The game system the documents are for —
@@ -305,6 +300,32 @@ export const PACK_DOCUMENT_TYPES = /** @type {const} */ ([
  */
 
 /**
+ * How a generated documentation page is framed in the repository publishing it.
+ *
+ * The tables come from the `itemBuilders` registry and are the same wherever
+ * they are rendered. Everything around them is the consumer's: the heading, the
+ * "See also" line its section's pages carry, the orientation a reader needs
+ * before the tables start, and where the page is filed. Those were the reason
+ * every consumer wrapped the renderer in a script of its own.
+ *
+ * @typedef {object} DocPageSpec
+ * @property {string} [title]      The page's H1.
+ * @property {string} [out]        Where to write it, relative to `rootDir`.
+ *                                 Without it the page goes to stdout.
+ * @property {string[]} [preamble] Lines between the generated banner and the
+ *                                 first table. Markdown, emitted verbatim.
+ */
+
+/**
+ * The documentation pages this repository generates.
+ *
+ * @typedef {object} DocsSpec
+ * @property {DocPageSpec} [itemFields]  The item-frontmatter reference,
+ *                                       rendered by `content-build docs
+ *                                       item-fields`.
+ */
+
+/**
  * @typedef {object} PublishSwitchesInput
  * @property {boolean} [site]
  * @property {ManifestSwitchesInput} [manifests]
@@ -363,6 +384,8 @@ export const PACK_DOCUMENT_TYPES = /** @type {const} */ ([
  * @property {PackageBuildSection} [packageBuild]  Reserved for
  *                                          `@heroiclands/package-build`, which
  *                                          validates it. Not read here.
+ * @property {DocsSpec} [docs]             How this repository frames the
+ *                                          documentation pages it generates.
  * @property {CompatibilitySpec} [compatibility]  The Foundry core range this
  *                                          package supports. Required for any
  *                                          repository that ships one — reading
@@ -414,6 +437,7 @@ export const PACK_DOCUMENT_TYPES = /** @type {const} */ ([
  *                                     each pack followed by its companions.
  * @property {Readonly<PackageBuildSection>} packageBuild  Passed through
  *                                     frozen, uninterpreted. `{}` when absent.
+ * @property {Readonly<DocsSpec>} docs   Frozen; `{}` when absent.
  * @property {Readonly<CompatibilitySpec>|null} compatibility  The Foundry core
  *                                     range, or `null` when none is declared.
  * @property {Readonly<Relationships>} relationships  Frozen; `{}` when absent.
@@ -430,12 +454,15 @@ const CONFIG_KEYS = [
     "paths",
     "skipDirectories",
     "packs",
+    "docs",
     "compatibility",
     "relationships",
     "packageBuild",
     "publish",
 ];
 const COMPATIBILITY_KEYS = ["minimum", "verified"];
+const DOCS_KEYS = ["itemFields"];
+const DOC_PAGE_KEYS = ["title", "out", "preamble"];
 const RELATIONSHIP_KINDS = ["systems", "requires", "recommends", "conflicts"];
 const RELATIONSHIP_KEYS = ["id", "type", "manifest", "compatibility"];
 const ITEM_BUILDER_KEYS = ["system", "img", "fields"];
@@ -659,6 +686,63 @@ function deepFreeze(value) {
     if (value === null || typeof value !== "object") return value;
     for (const inner of Object.values(value)) deepFreeze(inner);
     return Object.freeze(value);
+}
+
+/**
+ * Validate one generated page's framing.
+ *
+ * @param {unknown} value - The page spec, or `undefined`.
+ * @param {string} where - Dotted path, for the error.
+ * @returns {Readonly<DocPageSpec>} It, frozen; `{}` when absent.
+ */
+function normalizeDocPage(value, where) {
+    if (value === undefined) return Object.freeze({});
+    if (!isPlainObject(value)) fail(where, "must be a mapping");
+    const input = /** @type {Record<string, unknown>} */ (value);
+    rejectUnknownKeys(input, DOC_PAGE_KEYS, `${where}.`);
+
+    const out = {};
+    for (const key of ["title", "out"]) {
+        if (input[key] !== undefined) {
+            out[key] = requireNonEmptyString(input[key], `${where}.${key}`);
+        }
+    }
+    if (input.preamble !== undefined) {
+        if (!Array.isArray(input.preamble)) {
+            fail(
+                `${where}.preamble`,
+                "must be a list of lines — a blank entry is a blank line, " +
+                    "which is how paragraphs are separated in markdown",
+            );
+        }
+        // A blank line is meaningful here, so this checks the type without
+        // requiring content.
+        out.preamble = Object.freeze(
+            input.preamble.map((line, index) => {
+                if (typeof line !== "string") {
+                    fail(`${where}.preamble[${index}]`, "must be a string");
+                }
+                return line;
+            }),
+        );
+    }
+    return Object.freeze(out);
+}
+
+/**
+ * Validate the `docs` section.
+ *
+ * @param {unknown} value - The section, or `undefined`.
+ * @returns {Readonly<DocsSpec>} It, frozen; `{}` when absent.
+ */
+function normalizeDocs(value) {
+    if (value === undefined) return Object.freeze({});
+    if (!isPlainObject(value)) fail("docs", "must be a mapping");
+    const input = /** @type {Record<string, unknown>} */ (value);
+    rejectUnknownKeys(input, DOCS_KEYS, "docs.");
+    return Object.freeze({
+        itemFields: normalizeDocPage(input.itemFields, "docs.itemFields"),
+    });
 }
 
 /**
@@ -1039,6 +1123,7 @@ export function defineConfig(config) {
         skipDirectories: Object.freeze(skipDirectories),
         packs: Object.freeze(packs),
         packDirectories: Object.freeze(packDirectories),
+        docs: normalizeDocs(input.docs),
         compatibility: normalizeCompatibility(
             input.compatibility,
             "compatibility",

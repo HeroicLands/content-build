@@ -64,6 +64,39 @@ function cell(text) {
 }
 
 /**
+ * A markdown table with every column padded to its widest cell.
+ *
+ * **Padded so the generated page is stable under Prettier.** A consumer commits
+ * this page and formats its repository; Prettier aligns markdown table columns,
+ * so an unpadded table is rewritten the moment the formatter runs — and the
+ * `--check` guard then reports the page stale on every clean checkout, with the
+ * formatter and the generator each undoing the other.
+ *
+ * Plain `.length` rather than a display-width measure, because that is what
+ * Prettier's alignment comes to for this content: every cell is Latin text,
+ * backticks and the odd em dash, each of which counts one. A cell holding a
+ * wide character would need the measure Prettier uses; there are none, and
+ * `tests/field-reference.test.ts` fails if the rendered page ever stops
+ * agreeing with Prettier.
+ *
+ * @param {string[][]} rows - The header row, then the body.
+ * @returns {string[]} Markdown lines.
+ */
+function padTable(rows) {
+    const widths = rows[0].map((_, column) =>
+        Math.max(...rows.map((row) => row[column].length)),
+    );
+    const line = (cells) =>
+        `| ${cells.map((c, i) => c.padEnd(widths[i])).join(" | ")} |`;
+    const [header, ...body] = rows;
+    return [
+        line(header),
+        `| ${widths.map((w) => "-".repeat(w)).join(" | ")} |`,
+        ...body.map(line),
+    ];
+}
+
+/**
  * The field table for one type.
  *
  * @param {readonly object[]} fields - The type's declaration.
@@ -74,19 +107,17 @@ function fieldTable(fields) {
     if (!authored.length) {
         return ["This type reads no `sohl:` fields of its own."];
     }
-    const lines = [
-        "| Field | Shape | Required | Default | Description |",
-        "| --- | --- | --- | --- | --- |",
+    const rows = [
+        ["Field", "Shape", "Required", "Default", "Description"],
+        ...authored.map((field) => [
+            `\`${field.name}\``,
+            cell(field.shape ?? "as authored"),
+            field.required ? "**yes**" : "no",
+            field.required ? "—" : renderDefault(field.default),
+            cell(field.describe ?? ""),
+        ]),
     ];
-    for (const field of authored) {
-        lines.push(
-            `| \`${field.name}\` | ${cell(field.shape ?? "as authored")} | ` +
-                `${field.required ? "**yes**" : "no"} | ` +
-                `${field.required ? "—" : renderDefault(field.default)} | ` +
-                `${cell(field.describe ?? "")} |`,
-        );
-    }
-    return lines;
+    return padTable(rows);
 }
 
 /**
@@ -104,7 +135,12 @@ function fieldTable(fields) {
 function workedExample(type, fields) {
     const required = authoredFields(fields).filter((field) => field.required);
     const lines = [
-        "```yaml",
+        // `markdown`, not `yaml`: the block is a whole note — frontmatter *and*
+        // the prose beneath it — so labelling it YAML was wrong about the
+        // content. It also made the page unstable, because Prettier formats a
+        // fenced block in the language it declares, and reformatting this one as
+        // YAML dropped the blank line after the frontmatter.
+        "```markdown",
         "---",
         "name:",
         `  full: An Example ${type}`,
@@ -197,5 +233,10 @@ export function renderItemFieldReference({
         );
     }
 
-    return lines.join("\n");
+    // Trailing blank lines trimmed, so a caller adding its own newline gets
+    // exactly one. Sections push a separating "" after themselves, which leaves
+    // one at the end; Prettier strips it, and a page that disagrees with the
+    // formatter by one character is rewritten on the consumer's next format run
+    // and then reported stale by `--check` forever after.
+    return lines.join("\n").replace(/\n+$/, "");
 }

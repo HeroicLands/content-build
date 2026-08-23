@@ -67,7 +67,6 @@ skipDirectories: [Templates]
 # conventional layout shown here.
 paths:
   content: assets/content
-  packageManifest: assets/templates
   manifests: assets/manifests
   packJson: build/packs-json
   stage: build/stage/packs
@@ -83,6 +82,19 @@ packs:
     type: Scene
     companions:
       - { name: adventures, type: Adventure }
+
+# How this repository frames the pages `content-build docs` generates. The
+# tables come from the itemBuilders registry and are the same everywhere; the
+# heading, the filing and what a reader is told first are this repository's.
+docs:
+  itemFields:
+    title: Item Note Frontmatter
+    out: kb/dev-docs/content-creator/item-frontmatter.md
+    preamble:
+      - "See also: [The Authoring Workflow](authoring-workflow.md)"
+      - ""
+      - Every item note carries the frontmatter envelope described there. This
+        page covers what each **type** adds to it.
 
 # Reserved for @heroiclands/package-build, which validates what is inside it.
 # One repository describes itself in one file; the two build packages split by
@@ -262,12 +274,12 @@ object. Supplying `itemBuilders` is therefore all a consumer does to define an
 item type of its own; a table this package ships is one possible value, not the
 one the compiler holds.
 
-**Configuration supplies paths, never captured values.** `paths.packageManifest`
-says _where_ the shipped `system.template.json` / `module.template.json` lives;
-the package-id drift guard and the compiled packs' `_stats.coreVersion` both read
-it from there. The core version itself is deliberately not a config field — it is
-the configured `compatibility.minimum`, and a
-copy would silently stop following it.
+**Configuration is the source, and the manifest is generated from it.** That
+arrow used to point the other way: `paths.packageManifest` said where a
+hand-authored `system.template.json` lived, and the package-id guard and the
+`_stats.coreVersion` stamp both read out of it. Both are gone — the floor is the
+top-level `compatibility.minimum`, the id is derived from `package.json`
+`name`, and `@heroiclands/package-build` writes the manifest from this file.
 
 ### An item type's default art
 

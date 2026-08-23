@@ -681,7 +681,7 @@ export const ITEM_FIELDS = Object.freeze({
             ...NULLABLE_NUMBER,
             default: null,
             describe:
-                "Opened mastery level. Unset means *not yet opened* — an embedded copy opens on its actor at Skill Base × `initSkillMult`.",
+                "Opened mastery level. Unset means _not yet opened_ — an embedded copy opens on its actor at Skill Base × `initSkillMult`.",
         },
         {
             name: "improveFlag",
