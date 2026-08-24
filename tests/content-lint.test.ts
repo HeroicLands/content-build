@@ -11,12 +11,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
-import {
-    auditNoteAliases,
-    isAddressAlias,
-    isValidShortcode,
-    lintContentTree,
-} from "../engine/content-lint.mjs";
+import { isValidShortcode, lintContentTree } from "../engine/content-lint.mjs";
 
 /** A throwaway content tree, described as `{ relPath: contents }`. */
 function tree(files: Record<string, string>): string {
@@ -76,120 +71,6 @@ describe("isValidShortcode", () => {
         expect(isValidShortcode("two words")).toBe(false);
         expect(isValidShortcode("")).toBe(false);
         expect(isValidShortcode(undefined)).toBe(false);
-    });
-});
-
-describe("isAddressAlias", () => {
-    const types = new Set(["affliction", "doc", "weapongear"]);
-
-    it("reads a known type before the first hyphen as an address", () => {
-        expect(isAddressAlias("affliction-aconite", types)).toBe(true);
-        expect(isAddressAlias("doc-quickstart", types)).toBe(true);
-    });
-
-    // Note names are hyphenated too, which is exactly why the presence of a
-    // hyphen cannot be the rule.
-    it("treats a hyphenated name as a name", () => {
-        expect(isAddressAlias("Grukar-ahk", types)).toBe(false);
-    });
-
-    it("rejects the legacy slash separator", () => {
-        // Obsidian reads `/` as a path, so it could never be the alias that
-        // makes an address resolve in the editor.
-        expect(isAddressAlias("affliction/aconite", types)).toBe(false);
-    });
-
-    it("rejects a leading or trailing hyphen", () => {
-        expect(isAddressAlias("-aconite", types)).toBe(false);
-        expect(isAddressAlias("affliction-", types)).toBe(false);
-    });
-
-    it("rejects a non-string", () => {
-        expect(isAddressAlias(42, types)).toBe(false);
-        expect(isAddressAlias(undefined, types)).toBe(false);
-    });
-});
-
-describe("auditNoteAliases", () => {
-    const types = new Set(["affliction"]);
-
-    it("passes a note carrying exactly its own address", () => {
-        expect(
-            auditNoteAliases(
-                {
-                    type: "affliction",
-                    shortcode: "aconite",
-                    aliases: ["affliction-aconite", "Wolfsbane"],
-                },
-                types,
-            ),
-        ).toEqual({ ok: true });
-    });
-
-    it("skips a note with no shortcode, which has no address to carry", () => {
-        expect(
-            auditNoteAliases(
-                { type: "affliction", shortcode: undefined, aliases: [] },
-                types,
-            ),
-        ).toEqual({ ok: true, skipped: "no-shortcode" });
-    });
-
-    it("reports a missing address alias", () => {
-        const v = auditNoteAliases(
-            {
-                type: "affliction",
-                shortcode: "aconite",
-                aliases: ["Wolfsbane"],
-            },
-            types,
-        );
-        expect(v).toMatchObject({ ok: false, reason: "missing" });
-    });
-
-    // A left-behind alias keeps resolving, so nothing degrades until the
-    // retired code is reused and old links land on the wrong note. Counting is
-    // what catches that; presence never could.
-    it("reports a second address alias left behind after a rename", () => {
-        const v = auditNoteAliases(
-            {
-                type: "affliction",
-                shortcode: "aconite",
-                aliases: ["affliction-aconite", "affliction-oldcode"],
-            },
-            types,
-        );
-        expect(v).toMatchObject({ ok: false, reason: "duplicate" });
-    });
-
-    it("reports an address alias that is not this note's address", () => {
-        const v = auditNoteAliases(
-            {
-                type: "affliction",
-                shortcode: "aconite",
-                aliases: ["affliction-belladonna"],
-            },
-            types,
-        );
-        expect(v).toMatchObject({
-            ok: false,
-            reason: "mismatch",
-            expected: "affliction-aconite",
-        });
-    });
-
-    // Obsidian resolves a case-drifted alias happily, so nothing else would
-    // ever notice it had stopped matching the declared address.
-    it("is case-sensitive about the address", () => {
-        const v = auditNoteAliases(
-            {
-                type: "affliction",
-                shortcode: "aconite",
-                aliases: ["Affliction-Aconite"],
-            },
-            new Set(["affliction"]),
-        );
-        expect(v).toMatchObject({ ok: false, reason: "mismatch" });
     });
 });
 
@@ -270,13 +151,19 @@ describe("lintContentTree", () => {
         ).toHaveLength(2);
     });
 
-    it("reports a note missing its address alias", () => {
-        const r = lint({
-            "Afflictions/Aconite.md": note({ aliases: ["Wolfsbane"] }),
-        });
-        expect(r.findings).toHaveLength(1);
-        expect(r.findings[0].message).toContain("no address alias");
-        expect(r.findings[0].message).toContain("affliction-aconite");
+    // The rule requiring every note to repeat its own `type-shortcode` in
+    // `aliases:` is retired (#79). It served Obsidian and nothing else — no
+    // build ever read it — and the project no longer authors in Obsidian. A
+    // note carrying only ordinary aliases, or none at all, is now correct.
+    it("does not require a note to repeat its own address in aliases", () => {
+        expect(
+            lint({
+                "Afflictions/Aconite.md": note({ aliases: ["Wolfsbane"] }),
+            }).findings,
+        ).toEqual([]);
+        expect(
+            lint({ "Afflictions/Aconite.md": note({ aliases: [] }) }).findings,
+        ).toEqual([]);
     });
 
     // "Every one of nothing is unique" is a vacuous pass, and it is what a tree

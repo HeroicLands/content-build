@@ -22,20 +22,26 @@
  * disagree without anything detecting it, which the canonical-separator
  * handling already did once on each side.
  *
- * Three rules, all about a note's identity:
+ * Two rules, both about a note's identity:
  *
  * 1. **Shape** — a `shortcode` is strictly ASCII-alphanumeric. It is the
  *    identity key referenced from saved world data, and it is half of the
  *    `type-shortcode` address, whose parse depends on the separating hyphen
  *    being the only hyphen in the string.
  * 2. **Uniqueness** — `(type, shortcode)` names one note.
- * 3. **Alias** — the note physically carries its own address in `aliases`, and
- *    carries exactly one address-shaped alias.
  *
- * **Nothing here writes.** A check reports and an author fixes; the aliases in
- * particular were populated once, deliberately, by the maintainer, and the same
- * courtesy the system extends to a player's characters applies to the author's
- * own material.
+ * **Nothing here writes.** A check reports and an author fixes.
+ *
+ * **A third rule was retired (#79).** Every note used to be required to repeat
+ * its own `type-shortcode` address in the top-level `aliases:` list. That
+ * served exactly one reader — **Obsidian**, so `[[type-shortcode]]` resolved in
+ * the editor — and nothing else ever read it: both resolvers parse the hyphen
+ * qualifier themselves, and the alias list feeds only the bare-alias fallback
+ * index. The project no longer authors in Obsidian, so the rule required a line
+ * of frontmatter per note for a reader that does not exist. Removing it was
+ * verified output-neutral beforehand: across 1,735 stripped notes,
+ * `package compile` produced byte-identical `build/packs-json` and the site
+ * build byte-identical `site/content`.
  *
  * **What is deliberately absent.** Corpus reachability — "every Rules document
  * is reachable from the book's root" — is a statement about what one package
@@ -76,83 +82,6 @@ export const SHORTCODE_PATTERN = /^[A-Za-z0-9]+$/;
  */
 export function isValidShortcode(value) {
     return typeof value === "string" && SHORTCODE_PATTERN.test(value);
-}
-
-/**
- * Whether an alias is an **address** — a string a reader could write between
- * `[[…]]` and have resolved as `type-shortcode` rather than as a name.
- *
- * The test is the resolver's own (see `readQualifier` in `./wikilinks.mjs`):
- * split at the **first** hyphen, and treat it as a qualifier **only when what
- * precedes it is a known type**. Note names are hyphenated too — `Grukar-ahk`
- * is an alias, not an address — which is exactly why the mere presence of a
- * hyphen cannot be the rule.
- *
- * Two forms are deliberately *not* addresses:
- *
- * - **`type/shortcode`**, the legacy separator. Obsidian reads `/` as a path,
- *   so a slash-qualified string could never be the alias that makes an address
- *   resolve in the editor — which is the entire reason the alias exists.
- * - **`doc<type>-shortcode`**, the virtual qualifier addressing an item's
- *   *write-up*. That is a second document compiled from the same note, not this
- *   note's identity, so it is free to appear as an ordinary alias.
- *
- * @param {unknown} alias - A candidate alias.
- * @param {Set<string>} types - Every type the content tree contains, lowercase.
- * @returns {boolean} `true` when the alias reads as `type-shortcode`.
- */
-export function isAddressAlias(alias, types) {
-    if (typeof alias !== "string") return false;
-    const hyphen = alias.indexOf("-");
-    // `> 0` rather than `!== -1`: a leading hyphen leaves no type before it.
-    if (hyphen <= 0 || hyphen === alias.length - 1) return false;
-    return types.has(alias.slice(0, hyphen).toLowerCase());
-}
-
-/**
- * Audit one note's aliases against the rule.
- *
- * The shortcode's **character set is not checked here** — that is
- * {@link isValidShortcode}'s rule, and asserting it in two places would report
- * one note twice for one defect while coupling two independent invariants. This
- * answers a narrower question: does the note carry exactly one address-shaped
- * alias, and is it this note's address?
- *
- * **Why *exactly one*, rather than merely "the right one is present".** When a
- * shortcode changes and the previous alias is left behind, every old inbound
- * `[[type-oldcode|…]]` keeps resolving to the correct note. Nothing degrades,
- * nothing is reported, and the tree carries two live addresses for one
- * document — until the retired code is reused years later and the old links
- * silently land on the wrong note. Counting is what catches that; presence
- * never could.
- *
- * @param {{type: string, shortcode: unknown, aliases: unknown}} note - The
- *   note's frontmatter, as authored.
- * @param {Set<string>} types - Every type the content tree contains, lowercase.
- * @returns {{ok: true, skipped?: "no-shortcode"} |
- *   {ok: false, reason: "missing"|"duplicate"|"mismatch",
- *    expected: string, found: string[]}} The verdict.
- */
-export function auditNoteAliases(note, types) {
-    const shortcode = typeof note.shortcode === "string" ? note.shortcode : "";
-    // A note with no shortcode has no address to carry, and cannot be a link
-    // target at all. The uniqueness rule skips it for the same reason.
-    if (!shortcode) return { ok: true, skipped: "no-shortcode" };
-
-    const expected = `${note.type}-${shortcode}`;
-    const aliases = Array.isArray(note.aliases) ? note.aliases : [];
-    const found = aliases.filter((a) => isAddressAlias(a, types));
-
-    if (found.length === 0)
-        return { ok: false, reason: "missing", expected, found };
-    if (found.length > 1)
-        return { ok: false, reason: "duplicate", expected, found };
-    // Exact, not case-insensitive: Obsidian would resolve a case-drifted alias
-    // happily, so nothing else would ever notice it had stopped matching the
-    // address the note actually declares.
-    if (found[0] !== expected)
-        return { ok: false, reason: "mismatch", expected, found };
-    return { ok: true };
 }
 
 /**
@@ -201,12 +130,6 @@ export function lintContentTree(contentBase, { skipDirectories } = {}) {
     const findings = [];
     const notes = collectNotes(contentBase, { skipDirectories });
 
-    // Every type the tree itself contains — the alias rule has to know what
-    // reads as a qualifier, and the tree is the only honest source for that. A
-    // fixed vocabulary here would hand an adventure module a rule about types
-    // it does not have (#20).
-    const types = new Set(notes.map((n) => String(n.fm.type).toLowerCase()));
-
     /** @type {Map<string, Array<{file: string, absPath: string}>>} */
     const byKey = new Map();
 
@@ -235,30 +158,6 @@ export function lintContentTree(contentBase, { skipDirectories } = {}) {
                     `"${fm.type}-${shortcode}" address, whose parse needs the ` +
                     `separator to be the only hyphen`,
             });
-        }
-
-        const verdict = auditNoteAliases(fm, types);
-        if (!verdict.ok) {
-            const at =
-                verdict.found.length ?
-                    positionInFrontmatter(raw(), "aliases", verdict.found[0])
-                :   positionInFrontmatter(
-                        raw(),
-                        "shortcode",
-                        String(shortcode),
-                    );
-            const detail =
-                verdict.reason === "missing" ?
-                    `carries no address alias; add "${verdict.expected}" to ` +
-                    `\`aliases\` so the address resolves in the editor too`
-                : verdict.reason === "duplicate" ?
-                    `carries ${verdict.found.length} address aliases ` +
-                    `(${verdict.found.map((f) => `"${f}"`).join(", ")}); exactly ` +
-                    `one is allowed, and it must be "${verdict.expected}" — a ` +
-                    `left-behind alias keeps resolving until its code is reused`
-                :   `carries the address alias "${verdict.found[0]}" but its ` +
-                    `address is "${verdict.expected}"`;
-            findings.push({ file, ...at, severity: "error", message: detail });
         }
     }
 
