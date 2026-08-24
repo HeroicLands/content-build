@@ -38,8 +38,10 @@
  *   npx content-build package unpack [pack] [entry]
  *   npx content-build package clean [pack] [entry]
  *   npx content-build docs item-fields [--out <path>] [--title <title>]
- *   npx content-build lint [root]
+ *   npx content-build lint [root] [--no-references]
  *   npx content-build links [root] [--manifests <dir>]
+ *   npx content-build format [paths..] [--write]
+ *   npx content-build markdown [paths..] [--fix]
  *   npx content-build manifest [root] [--out <dir>]
  *   npx content-build site [--out <dir>]
  *   npx content-build reachability <dir> [file] [--index <shortcode>]
@@ -64,6 +66,11 @@ import {
 import { loadPackConfig } from "../engine/pack-config.mjs";
 import { renderItemFieldReference } from "../engine/field-reference.mjs";
 import { lintContentTree } from "../engine/content-lint.mjs";
+import { lintFrontmatter } from "../engine/frontmatter-lint.mjs";
+// The one vocabulary, loaded whole. Every content project authors the full type
+// set — an adventure module ships skills, beings and magic swords — so no
+// consumer gets a subset (#19, #20).
+import { NOTE_SCHEMAS } from "../sohl/note-schemas.mjs";
 import { checkFormatting, lintMarkdown } from "../engine/prose-lint.mjs";
 import { emitLinkManifest } from "../engine/manifest-emit.mjs";
 import {
@@ -299,28 +306,58 @@ function docsCommand() {
 function lintCommand() {
     return {
         command: "lint [root]",
-        describe: "Check a content tree's addresses",
+        describe: "Check a content tree's addresses and frontmatter",
         builder: (yargs) => {
             yargs.positional("root", {
                 describe:
                     "Content tree to lint. Defaults to the configured contentBase.",
                 type: "string",
             });
+            yargs.option("references", {
+                describe:
+                    "Check that a frontmatter shortcode reference lands. Turn off for a tree whose cross-package references it cannot see.",
+                type: "boolean",
+                default: true,
+            });
+            yargs.option("manifests", {
+                describe:
+                    "Directory of vendored foreign link manifests, for the reference check. Defaults to the configured `paths.manifests`.",
+                type: "string",
+            });
         },
         handler: (argv) => {
             try {
-                const root = argv.root ?? loadPackConfig().paths.content;
-                const { findings, notes, keys } = lintContentTree(root);
+                const config = loadPackConfig();
+                const root = argv.root ?? config.paths.content;
+                const manifestDir = argv.manifests ?? config.paths.manifests;
+
+                const addresses = lintContentTree(root);
+                // One index, built once, for the reference check. It is the
+                // same resolver the wikilink audit uses, so a frontmatter
+                // reference and a body link answer the same way.
+                const index = buildLinkIndex(root, {
+                    manifestDir,
+                    skipDirectories: config.skipDirectories,
+                });
+                const frontmatter = lintFrontmatter(index, {
+                    schemas: NOTE_SCHEMAS,
+                    references: argv.references,
+                });
+
+                const findings = [
+                    ...addresses.findings,
+                    ...frontmatter.findings,
+                ];
                 for (const finding of findings) emitDiagnostic(finding);
                 if (findings.length) {
                     log.error(
-                        `${findings.length} finding(s) across ${notes} note(s).`,
+                        `${findings.length} finding(s) across ${addresses.notes} note(s).`,
                     );
                     process.exitCode = 1;
                 } else {
                     log.info(
-                        `Addresses are well-formed and unique ` +
-                            `(${keys} across ${notes} note(s)).`,
+                        `Addresses and frontmatter are well-formed ` +
+                            `(${addresses.keys} across ${addresses.notes} note(s)).`,
                     );
                 }
             } catch (err) {
