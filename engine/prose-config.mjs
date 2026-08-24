@@ -34,7 +34,8 @@
  */
 
 /**
- * The Prettier configuration every content repository shares.
+ * The Prettier options every content repository shares, before any per-language
+ * adjustment.
  *
  * The values are not arbitrary: they are the ones the SoHL repository has
  * always used, kept identical here so a module or a note moving between
@@ -44,7 +45,7 @@
  *
  * @type {Readonly<object>}
  */
-export const PRETTIER_CONFIG = Object.freeze({
+export const PRETTIER_BASE = Object.freeze({
     printWidth: 80,
     tabWidth: 4,
     useTabs: false,
@@ -57,16 +58,65 @@ export const PRETTIER_CONFIG = Object.freeze({
     arrowParens: "always",
     endOfLine: "lf",
     experimentalTernaries: true,
+});
+
+/**
+ * What markdown gets on top of {@link PRETTIER_BASE}.
+ *
+ * Markdown indents at 2, not the global 4. Notes are the thing several
+ * repositories exchange, so their indentation is the one value that most needs
+ * to be the same everywhere — a note's YAML frontmatter is nested lists, and at
+ * 4 every note reindents away from the form it was written in.
+ *
+ * **Declared apart from the `overrides` block, not derived from it.** Prettier
+ * applies `overrides` only while resolving a config *file*; options handed to
+ * it directly keep the global values, so a consumer with no config of its own
+ * silently got markdown at 4 (#76). The runner needs the adjustment as data it
+ * can apply itself, and {@link PRETTIER_CONFIG} composes the same values into
+ * the shape a config file wants — one source, two presentations.
+ *
+ * @type {Readonly<object>}
+ */
+export const PRETTIER_MARKDOWN = Object.freeze({ tabWidth: 2 });
+
+/**
+ * The shared configuration in the shape a Prettier **config file** takes.
+ *
+ * This is what a consumer's `prettier.config.mjs` re-exports, and it is the
+ * form in which the markdown adjustment works: resolved from the consumer's own
+ * root, `**\/*.md` matches that repository's markdown. Shipped from inside
+ * `node_modules` it would match nothing, because Prettier resolves an
+ * override's glob relative to the config file's own directory — which is why
+ * the runner applies {@link PRETTIER_MARKDOWN} itself rather than pointing
+ * Prettier at this file.
+ *
+ * @type {Readonly<object>}
+ */
+export const PRETTIER_CONFIG = Object.freeze({
+    ...PRETTIER_BASE,
     overrides: Object.freeze([
         Object.freeze({
-            // Markdown indents at 2, not the global 4. Notes are the thing
-            // several repositories exchange, so their indentation is the one
-            // value that most needs to be the same everywhere.
             files: "**/*.md",
-            options: Object.freeze({ tabWidth: 2 }),
+            options: PRETTIER_MARKDOWN,
         }),
     ]),
 });
+
+/**
+ * The shared options for one file, with the per-language adjustment applied.
+ *
+ * What a consumer's own Prettier config would have produced, for a repository
+ * that declares none.
+ *
+ * @param {string} file - Path of the file about to be formatted.
+ * @returns {object} Options to hand Prettier directly. Never carries
+ *   `overrides`: passing that inline is what silently did nothing (#76).
+ */
+export function sharedPrettierOptionsFor(file) {
+    return /\.md$/i.test(file) ?
+            { ...PRETTIER_BASE, ...PRETTIER_MARKDOWN }
+        :   { ...PRETTIER_BASE };
+}
 
 /**
  * The markdownlint rules — the structural checks Prettier cannot make.

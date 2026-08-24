@@ -121,6 +121,33 @@ describe("content-build format (#69)", () => {
         expect(files(r.findings)).toEqual([path.join("without", "a.js")]);
     });
 
+    // Prettier applies an `overrides` block only while resolving a config
+    // *file*; options handed to it directly keep the global values. So the
+    // shared configuration's markdown override was silently dropped in exactly
+    // the repositories the command exists for — the ones declaring no config of
+    // their own — and markdown indented at 4 (#76). It went unseen because a
+    // repository with a config resolves it correctly, and every markdown
+    // fixture here was a single line with nothing to indent.
+    it("indents markdown at 2 with no local config, as the shared override says", async () => {
+        const note = write(
+            "note.md",
+            "---\nname:\n  full: X\n  aliases:\n    - A\n---\n\ntext\n",
+        );
+
+        expect((await checkFormatting(root)).findings).toEqual([]);
+
+        await checkFormatting(root, { write: true });
+        expect(fs.readFileSync(note, "utf8")).toContain("  full: X");
+        expect(fs.readFileSync(note, "utf8")).not.toContain("    full: X");
+    });
+
+    it("still indents everything else at the shared global width", async () => {
+        // The override is scoped to markdown; the rest of the tree keeps 4, so
+        // fixing the override must not flatten that too.
+        write("a.js", "function x() {\n  return 1;\n}\n");
+        expect(files((await checkFormatting(root)).findings)).toEqual(["a.js"]);
+    });
+
     it("reports an unparseable file with its position, and keeps going", async () => {
         // Exactly the shape that took a whole run down before it could report:
         // sohl-kethira-basic's lang/en.json, an array holding object pairs.
