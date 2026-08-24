@@ -171,3 +171,46 @@ describe("the declarations preserve the vocabulary they replaced", () => {
         ).toThrow(/must be one of/);
     });
 });
+
+// The builders are an allow-list: a `sohl:` key no declaration names is
+// discarded at compile with no warning and no effect on the exit code. That is
+// how 204 kethira mystical abilities shipped with no link to the affiliation
+// granting them (#3). These assert the emitted document rather than the
+// declaration, because the declaration is exactly what was wrong.
+describe("association codes reach the emitted document (#3)", () => {
+    it("carries a mystical ability's granting affiliation", () => {
+        expect(
+            build("mysticalability", {
+                subType: "arcane",
+                assocAffiliationCode: "lyahvi",
+            }).assocAffiliationCode,
+        ).toBe("lyahvi");
+    });
+
+    it("carries a mystery's skill and granting affiliation", () => {
+        const system = build("mystery", {
+            subType: "divine",
+            assocSkillCode: "ritual",
+            assocAffiliationCode: "peoni",
+        });
+        expect(system.assocSkillCode).toBe("ritual");
+        expect(system.assocAffiliationCode).toBe("peoni");
+    });
+
+    // Both DataModels declare these `nullable: true, blank: false, initial:
+    // null`, so "unset" is one value rather than two — a cleared field must
+    // not ship as `""`.
+    it("ships an unset or cleared code as null on both types", () => {
+        for (const type of ["mysticalability", "mystery"]) {
+            expect(
+                build(type, { subType: "arcane" }).assocAffiliationCode,
+                type,
+            ).toBeNull();
+            expect(
+                build(type, { subType: "arcane", assocAffiliationCode: "" })
+                    .assocAffiliationCode,
+                type,
+            ).toBeNull();
+        }
+    });
+});
