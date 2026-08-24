@@ -64,6 +64,7 @@ import {
 import { loadPackConfig } from "../engine/pack-config.mjs";
 import { renderItemFieldReference } from "../engine/field-reference.mjs";
 import { lintContentTree } from "../engine/content-lint.mjs";
+import { checkFormatting, lintMarkdown } from "../engine/prose-lint.mjs";
 import { emitLinkManifest } from "../engine/manifest-emit.mjs";
 import {
     buildSite,
@@ -136,6 +137,8 @@ const argv = yargs(hideBin(process.argv))
     .command(docsCommand())
     .command(lintCommand())
     .command(linksCommand())
+    .command(formatCommand())
+    .command(markdownCommand())
     .command(manifestCommand())
     .command(siteCommand())
     .command(reachabilityCommand())
@@ -319,6 +322,136 @@ function lintCommand() {
                         `Addresses are well-formed and unique ` +
                             `(${keys} across ${notes} note(s)).`,
                     );
+                }
+            } catch (err) {
+                log.error(err.message);
+                process.exitCode = 1;
+            }
+        },
+    };
+}
+
+/**
+ * `content-build format` — Prettier, with the shared configuration.
+ *
+ * Deliberately **not** scoped to the content tree, and deliberately free of the
+ * pack configuration: a repository's formatting covers everything it holds, and
+ * a repository that has not configured this package at all must still be able
+ * to format itself. The root is therefore the working directory, not
+ * `paths.content`.
+ *
+ * What ships here is a default. A consumer's own Prettier config wins wherever
+ * it has one, and its `.prettierignore` is the only place a path is excluded —
+ * which paths a repository skips is knowledge about that repository's layout,
+ * and it stays there.
+ *
+ * @returns {object} The yargs command module.
+ */
+// eslint-disable-next-line
+function formatCommand() {
+    return {
+        command: "format [paths..]",
+        describe: "Check formatting with the shared Prettier configuration",
+        builder: (yargs) => {
+            yargs.positional("paths", {
+                describe:
+                    "Files or directories to check. Defaults to the whole repository.",
+                type: "string",
+            });
+            yargs.option("write", {
+                describe:
+                    "Rewrite unformatted files in place instead of reporting them.",
+                type: "boolean",
+                default: false,
+            });
+            yargs.option("check", {
+                describe:
+                    "Report unformatted files without rewriting them (the default).",
+                type: "boolean",
+            });
+        },
+        handler: async (argv) => {
+            try {
+                // `--check` is the default, so it only has to be honoured when
+                // it contradicts `--write`; naming both is a mistake worth
+                // saying out loud rather than silently resolving.
+                if (argv.check === true && argv.write) {
+                    log.error(
+                        "--check and --write ask for opposite things; name one.",
+                    );
+                    process.exitCode = 1;
+                    return;
+                }
+                const root = process.cwd();
+                const { findings, checked, written } = await checkFormatting(
+                    root,
+                    { paths: argv.paths, write: argv.write },
+                );
+                if (argv.write) {
+                    log.info(
+                        written.length ?
+                            `Formatted ${written.length} of ${checked} file(s).`
+                        :   `Already formatted (${checked} file(s)).`,
+                    );
+                    return;
+                }
+                for (const finding of findings) emitDiagnostic(finding);
+                if (findings.length) {
+                    log.error(
+                        `${findings.length} of ${checked} file(s) are not formatted.`,
+                    );
+                    process.exitCode = 1;
+                } else {
+                    log.info(`Formatting is clean (${checked} file(s)).`);
+                }
+            } catch (err) {
+                log.error(err.message);
+                process.exitCode = 1;
+            }
+        },
+    };
+}
+
+/**
+ * `content-build markdown` — markdownlint, with the shared rule set.
+ *
+ * The structural checks Prettier cannot make: a heading level that skips, two
+ * sibling headings claiming one anchor, a reversed link, an emphasis marker
+ * that is not the one these repositories write. Like `format`, it runs over the
+ * repository rather than the content tree, and takes its rules from this
+ * package unless the consumer declares its own.
+ *
+ * @returns {object} The yargs command module.
+ */
+// eslint-disable-next-line
+function markdownCommand() {
+    return {
+        command: "markdown [paths..]",
+        describe: "Lint markdown with the shared markdownlint rule set",
+        builder: (yargs) => {
+            yargs.positional("paths", {
+                describe:
+                    "Globs to lint. Defaults to every markdown file in the repository.",
+                type: "string",
+            });
+            yargs.option("fix", {
+                describe: "Apply the fixes markdownlint can make.",
+                type: "boolean",
+                default: false,
+            });
+        },
+        handler: async (argv) => {
+            try {
+                const { findings } = await lintMarkdown(process.cwd(), {
+                    paths: argv.paths,
+                    fix: argv.fix,
+                });
+                for (const finding of findings) emitDiagnostic(finding);
+                if (findings.length) {
+                    log.error(`${findings.length} markdown finding(s).`);
+                    process.exitCode = 1;
+                } else {
+                    log.info("Markdown is clean.");
                 }
             } catch (err) {
                 log.error(err.message);

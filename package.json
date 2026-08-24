@@ -31,6 +31,14 @@
             "types": "./types/config.d.mts",
             "import": "./config.mjs"
         },
+        "./prettier": {
+            "types": "./types/prettier-config.d.mts",
+            "import": "./prettier-config.mjs"
+        },
+        "./markdownlint": {
+            "types": "./types/markdownlint-config.d.mts",
+            "import": "./markdownlint-config.mjs"
+        },
         "./package.json": "./package.json"
     },
     "bin": {
@@ -43,6 +51,8 @@
         "types",
         "config.mjs",
         "index.mjs",
+        "prettier-config.mjs",
+        "markdownlint-config.mjs",
         "CHANGELOG.md",
         "README.md"
     ],
@@ -51,8 +61,9 @@
         "test:watch": "vitest",
         "prepack": "npm run build:types",
         "build:types": "tsc -p tsconfig.dts.json",
-        "format": "prettier --write .",
-        "format:check": "prettier --check .",
+        "format": "node bin/content-build.mjs format --write",
+        "format:check": "node bin/content-build.mjs format",
+        "lint:markdown": "node bin/content-build.mjs markdown",
         "changeset": "changeset",
         "changeset:check": "changeset status --since=origin/main",
         "prepare": "git config core.hooksPath .githooks || true"
@@ -64,6 +75,8 @@
         "loglevel": "^1.9.2",
         "loglevel-plugin-prefix": "^0.8.4",
         "markdown-it": "^14.1.0",
+        "markdownlint-cli2": "^0.23.2",
+        "prettier": "^3.6.2",
         "unidecode": "^1.1.0",
         "yaml": "^2.8.1",
         "yargs": "^18.1.0"
@@ -71,7 +84,6 @@
     "devDependencies": {
         "@changesets/cli": "^3.0.0",
         "@types/node": "^26.2.0",
-        "prettier": "^3.6.2",
         "typescript": "^5.9.2",
         "vitest": "^3.1.2"
     },
