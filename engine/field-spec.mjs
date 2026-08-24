@@ -58,6 +58,17 @@ import { sohlField } from "./frontmatter.mjs";
  * @property {any} [default] - Emitted when the note does not carry the field.
  * @property {boolean} [required] - Whether a note must carry it. A required
  *   field's `read` is expected to throw when it is missing.
+ * @property {"string"|"number"|"boolean"|"list"|"map"} [kind] - The value's
+ *   shape, for the frontmatter linter (#19). Distinct from `shape`, which is
+ *   prose for a reader, and from `read`, which is what the compiler does: a
+ *   field may declare `kind` without changing a byte of what it emits, and
+ *   several do — `weight` is coerced leniently but is still a number, and
+ *   `weight: heavy` is an authoring mistake worth reporting where it was made.
+ *   Absent means the lint makes no claim about the value.
+ * @property {string} [ref] - The content type a value addresses by shortcode,
+ *   for the linter's dead-reference check. Only for references to a **note**:
+ *   `bodyLocationCode` names a part inside a being's own body structure, not a
+ *   note, so it declares none.
  * @property {any|((fm: object) => any)} [value] - For a field with no `name`:
  *   the constant, or a function deriving it from the frontmatter.
  * @property {string} describe - One line, for the author-facing reference.
@@ -73,18 +84,21 @@ export const AS_AUTHORED = Object.freeze({ shape: "as authored" });
 /** Coerced with `String()`. */
 export const STRING = Object.freeze({
     shape: "string",
+    kind: "string",
     read: (raw) => String(raw),
 });
 
 /** Coerced with `Number()`, with a non-numeric or absent value reading `0`. */
 export const NUMBER = Object.freeze({
     shape: "number",
+    kind: "number",
     read: (raw) => Number(raw) || 0,
 });
 
 /** Coerced with `Boolean()`. */
 export const BOOLEAN = Object.freeze({
     shape: "boolean",
+    kind: "boolean",
     read: (raw) => Boolean(raw),
 });
 
@@ -95,6 +109,7 @@ export const BOOLEAN = Object.freeze({
  */
 export const NULLABLE_NUMBER = Object.freeze({
     shape: "number or unset",
+    kind: "number",
     read: (raw) => (raw == null || raw === "" ? null : Number(raw)),
 });
 
@@ -104,6 +119,7 @@ export const NULLABLE_NUMBER = Object.freeze({
  */
 export const NULLABLE_COUNT = Object.freeze({
     shape: "number or unset",
+    kind: "number",
     read: (raw) => (raw == null ? null : Number(raw) || 0),
 });
 

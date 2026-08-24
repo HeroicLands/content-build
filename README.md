@@ -355,7 +355,7 @@ has no art.
 ```
 npx content-build package <compile|unpack|clean> [pack] [entry]
 npx content-build docs item-fields [--out <path>] [--title <title>]
-npx content-build lint [root]
+npx content-build lint [root] [--no-references]
 npx content-build links [root] [--manifests <dir>]
 npx content-build format [paths..] [--write]
 npx content-build markdown [paths..] [--fix]
@@ -368,7 +368,7 @@ npx content-build reachability <dir> [file] [--index <shortcode>]
 | -------------- | ----------------------------------------------------------------------------------------------------------------------------- |
 | `package`      | Compile the content tree into LevelDB packs, unpack a shipped pack back to JSON, or clean one. See [Install](#install).       |
 | `docs`         | Render a generated reference from the configured registries. `item-fields` is the item-frontmatter page.                      |
-| `lint`         | Check a content tree's addresses — shape, uniqueness, alias. See [Linting a content tree](#linting-a-content-tree).           |
+| `lint`         | Check a content tree's addresses and its frontmatter. See [Linting a content tree](#linting-a-content-tree).                  |
 | `links`        | Check that every link in the tree lands: dead anchors, dead qualified addresses, wikilinks in frontmatter, drifted manifests. |
 | `format`       | Prettier, with the shared configuration. See [Prose: formatting and markdown](#prose-formatting-and-markdown).                |
 | `markdown`     | markdownlint, with the shared rule set — the structure Prettier is indifferent to.                                            |
@@ -411,6 +411,38 @@ It compiles nothing, opens no LevelDB and needs no Foundry manifest, so it runs
 in about a second and can gate a commit. An empty or untyped tree **fails**
 rather than passing: "every one of nothing is unique" is a vacuous pass, and it
 is exactly what a tree that failed to check out produces.
+
+### Frontmatter, against the schema its type declares
+
+The same command also checks that each note's `sohl:` block is what its **type**
+allows (#19). Five classes, all of them mistakes that were previously reported
+somewhere other than where they were made, or not at all:
+
+- **Unknown or retired type** — a note on a retired spelling is told what
+  replaced it.
+- **Missing required property** — `dimensions` on a map, `subType` on a skill.
+- **Wrong value shape** — `weight: heavy` where a number belongs.
+- **Unknown property** — _the allow-list made loud_. The builders discard a
+  `sohl:` key no field declares, with no warning and no effect on the exit code,
+  which is how 204 kethira mystical abilities shipped with no affiliation (#3).
+  A near miss is named: `Did you mean "masteryLevelBase"?`
+- **Dead shortcode reference** — `assocSkillCode` naming a skill nothing
+  declares. Resolved through the same resolver `links` uses, so a cross-package
+  reference answered by a vendored manifest lands exactly as it would in a
+  wikilink. `--no-references` turns this one off for a tree whose cross-package
+  references it cannot see.
+
+**A schema says what a note may _write_, not what the compiler emits.** Those
+are different, and the difference is the whole calibration of the check: a note
+also feeds a knowledgebase and a website, and those read classification the pack
+build never compiles — `kbcat` alone appears 51 times in SoHL's knowledgebase
+layouts. Equating the vocabulary with the builder's allow-list reported 4,241
+unknown properties against SoHL's own tree, every one correctly authored.
+
+Item types need no separate declaration: their field list already _is_ the
+builder, so schema and compiler cannot disagree. The hand-written compilers —
+`being`, `macro`, `doc` and the three map types — declare theirs in
+`sohl/note-schemas.mjs`.
 
 Nothing here writes. A check reports and an author fixes.
 
