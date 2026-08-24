@@ -22,5 +22,12 @@
         "rootDir": ".",
         "declarationDir": "types"
     },
-    "include": ["index.mjs", "config.mjs", "engine/**/*.mjs", "sohl/**/*.mjs"]
+    "include": [
+        "index.mjs",
+        "config.mjs",
+        "prettier-config.mjs",
+        "markdownlint-config.mjs",
+        "engine/**/*.mjs",
+        "sohl/**/*.mjs"
+    ]
 }

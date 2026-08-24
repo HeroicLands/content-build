@@ -28,6 +28,12 @@ jobs:
             - run: npm ci
             - name: Formatting
               run: npm run format:check
+            # Both of these run this package's own `format` / `markdown`
+            # commands over this repository, so the shared prose checks are
+            # exercised on every build rather than only in the consumers that
+            # invoke them.
+            - name: Markdown
+              run: npm run lint:markdown
             - name: Tests
               run: npm test
             # Declaration emit is what `prepack` runs at publish time, so a

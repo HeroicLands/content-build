@@ -357,6 +357,8 @@ npx content-build package <compile|unpack|clean> [pack] [entry]
 npx content-build docs item-fields [--out <path>] [--title <title>]
 npx content-build lint [root]
 npx content-build links [root] [--manifests <dir>]
+npx content-build format [paths..] [--write]
+npx content-build markdown [paths..] [--fix]
 npx content-build manifest [root] [--out <dir>]
 npx content-build site [--out <dir>]
 npx content-build reachability <dir> [file] [--index <shortcode>]
@@ -368,6 +370,8 @@ npx content-build reachability <dir> [file] [--index <shortcode>]
 | `docs`         | Render a generated reference from the configured registries. `item-fields` is the item-frontmatter page.                      |
 | `lint`         | Check a content tree's addresses — shape, uniqueness, alias. See [Linting a content tree](#linting-a-content-tree).           |
 | `links`        | Check that every link in the tree lands: dead anchors, dead qualified addresses, wikilinks in frontmatter, drifted manifests. |
+| `format`       | Prettier, with the shared configuration. See [Prose: formatting and markdown](#prose-formatting-and-markdown).                |
+| `markdown`     | markdownlint, with the shared rule set — the structure Prettier is indifferent to.                                            |
 | `manifest`     | Emit this package's cross-package link manifest. See [Publishing a link manifest](#publishing-a-link-manifest).               |
 | `site`         | Publish the content tree as a website. See [Publishing a website](#publishing-a-website).                                     |
 | `reachability` | Walk outward from an index note and report what no path reaches, for a tree meant to be navigable from one entry point.       |
@@ -409,6 +413,62 @@ rather than passing: "every one of nothing is unique" is a vacuous pass, and it
 is exactly what a tree that failed to check out produces.
 
 Nothing here writes. A check reports and an author fixes.
+
+## Prose: formatting and markdown
+
+```bash
+npx content-build format             # check the whole repository
+npx content-build format --write     # rewrite what is not formatted
+npx content-build markdown           # lint every markdown file
+npx content-build markdown --fix     # apply the fixes markdownlint can make
+```
+
+Two conventions every content repository writes to, declared once here so a note
+formatted in one is formatted the same way in the next (#69):
+
+- **`format`** runs Prettier. Same values SoHL has always used, so a module or a
+  note moving between repositories does not reformat on arrival.
+- **`markdown`** runs markdownlint — the structural checks Prettier cannot make:
+  a heading level that skips, two sibling headings claiming one anchor, a
+  reversed `(text)[url]`, a bare URL, an empty link, a table row with the wrong
+  cell count, and the emphasis markers (`_emphasis_`, `**strong**`) these
+  repositories write.
+
+The rule set is **deliberately narrow**. markdownlint's defaults over a content
+tree produce tens of thousands of findings, almost all of them line length, list
+indentation and blank lines — Prettier's territory. So `default` is off and each
+rule is enabled by name, with the reason it earns its place; add one only if it
+can report that a page is _wrong_.
+
+Both run over the **repository**, not the content tree, and neither reads the
+pack configuration — a repository's formatting covers everything it holds, and
+one that has not configured this package at all can still format itself.
+
+**What ships here is a default, not an override.** A consumer's own Prettier
+config or `.markdownlint-cli2.jsonc` wins wherever it has one. Which paths to
+skip is knowledge about a repository's layout and stays with that repository, in
+its own `.prettierignore` and `.gitignore` — both honoured, as Prettier and
+markdownlint honour them natively. The one exception is `CHANGELOG.md`, which
+`changeset version` regenerates in every repository here: linting it reports on
+the generator, so it is skipped by default.
+
+Neither tool's file discovery is reimplemented, so `content-build format --check`
+and a bare `prettier --check .` report the same thing. A file Prettier cannot
+parse is a **finding**, with its position — not a crash that costs the report on
+every other file.
+
+To make an editor agree with the lint chain, point its config at the same rules:
+
+```js
+// prettier.config.mjs
+export { default } from "@heroiclands/content-build/prettier";
+```
+
+```js
+// .markdownlint-cli2.mjs — extending rather than replacing
+import shared from "@heroiclands/content-build/markdownlint";
+export default { ...shared, config: { ...shared.config, MD013: true } };
+```
 
 ## Publishing a link manifest
 
