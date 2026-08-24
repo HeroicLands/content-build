@@ -38,7 +38,7 @@ import {
     MARKDOWNLINT_CONFIG,
     MARKDOWN_GLOBS,
     MARKDOWN_IGNORES,
-    PRETTIER_CONFIG,
+    sharedPrettierOptionsFor,
 } from "./prose-config.mjs";
 
 /**
@@ -97,8 +97,9 @@ function walkFiles(root) {
  *
  * The configuration resolution is the part that matters: a consumer's own
  * Prettier config, found by Prettier walking up from each file, always wins.
- * {@link PRETTIER_CONFIG} is what a file gets when that search finds nothing,
- * which is the case in a repository that has deliberately declared none.
+ * {@link sharedPrettierOptionsFor} is what a file gets when that search finds
+ * nothing, which is the case in a repository that has deliberately declared
+ * none.
  *
  * @param {string} root - Repository (or subtree) to check.
  * @param {object} [opts]
@@ -144,8 +145,11 @@ export async function checkFormatting(root, opts = {}) {
         const local = await prettier.resolveConfig(file, {
             editorconfig: false,
         });
+        // `resolveConfig` has already applied any `overrides` the consumer's
+        // own config declares. The shared fallback has to apply its own, since
+        // Prettier ignores an `overrides` block passed inline (#76).
         const options = {
-            ...(local ?? PRETTIER_CONFIG),
+            ...(local ?? sharedPrettierOptionsFor(file)),
             filepath: file,
         };
         const source = fs.readFileSync(file, "utf8");
