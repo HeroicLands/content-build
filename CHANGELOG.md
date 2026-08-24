@@ -1,5 +1,109 @@
 # @heroiclands/content-build
 
+## 1.5.0
+
+### Minor Changes
+
+- 4a86493: Carry a mystical ability's and a mystery's granting affiliation through to the
+  compiled document (#3).
+  
+  `assocAffiliationCode` is a real field on both `MysticalAbilityDataModel` and
+  `MysteryDataModel`, and neither type's declaration named it — so the builders,
+  which are an allow-list, discarded it. In `sohl-kethira-basic` **204 of 224
+  mysticalability notes set it to a real value**, and every one of them compiled
+  without it: no mystical ability in that shipped pack was linked to the
+  affiliation that grants it. `mystery` was missing `assocSkillCode` for the same
+  reason.
+  
+  Both are declared `nullable: true, blank: false, initial: null` on their
+  DataModels, so the new fields read blank as `null` rather than `""` — "unset" is
+  one value, not two.
+  
+  **This changes emitted documents**, so a consumer whose notes set either field
+  wants a rebuild rather than a silent upgrade.
+  
+  _Not fixed here:_ the silence itself. A `sohl:` key no declaration names is
+  still dropped with no warning and no effect on the exit code, which is what made
+  this cost 204 documents before anyone noticed — that is #19's unknown-property
+  check. The inverse case, an emitted field no DataModel declares, is #70.
+- d9ea689: Check a note's frontmatter against the schema its type declares (#19), and make
+  the builders' allow-list loud (#3).
+  
+  `content-build lint` now checks frontmatter as well as addresses. Five classes,
+  each previously reported somewhere other than where it was made, or not at all:
+  
+  - **Unknown or retired type**, told what replaced it.
+  - **Missing required property** — `dimensions` on a map, `subType` on a skill.
+  - **Wrong value shape** — `weight: heavy` where a number belongs.
+  - **Unknown property**, with a near-miss suggestion. This is #3's second half:
+    the builders discard a `sohl:` key no field declares, with no warning and no
+    effect on the exit code, which is how 204 kethira mystical abilities shipped
+    with no affiliation. An author could not tell a builder that forgot a field
+    apart from a field that does not belong on the type at all.
+  - **Dead shortcode reference**, resolved through the same resolver `links` uses,
+    so a cross-package reference answered by a vendored manifest lands exactly as
+    it would in a wikilink. `--no-references` turns it off for a tree whose
+    cross-package references it cannot see.
+  
+  **A schema says what a note may _write_, not what the compiler emits.** That
+  distinction is the calibration: a note also feeds a knowledgebase and a website,
+  which read classification the pack build never compiles. Equating the vocabulary
+  with the builder's allow-list reported 4,241 unknown properties against SoHL's
+  own tree, every one correctly authored; declared properly, the same tree reports
+  **nothing** across 1,457 notes.
+  
+  What that calibration then finds elsewhere is real: 120 findings in
+  `sohl-thalorna` — including 44 mysteries still carrying the retired `trait`, a
+  being on the retired `birthsign`, and a skill with no `subType` — and 270 in
+  `sohl-kethira-basic`.
+  
+  **Expect a previously green tree to go red.** That is the point of the issue,
+  not a regression: the findings were always there and nothing reported them.
+  
+  Two additions to a field declaration make this checkable: `kind`, a
+  machine-readable value shape distinct from the prose `shape` (a field may
+  declare one without changing a byte of what it emits), and `ref`, the content
+  type a shortcode addresses.
+- 97fcb9b: Own prose formatting and markdown linting, so a consumer invokes rather than
+  configures (#69).
+  
+  Two new commands:
+  
+  - `content-build format [paths..] [--write]` — Prettier, with the shared
+    configuration.
+  - `content-build markdown [paths..] [--fix]` — markdownlint, with a narrow,
+    individually justified rule set covering the structure Prettier is indifferent
+    to: a skipped heading level, two sibling headings claiming one anchor, a
+    reversed `(text)[url]`, a bare URL, an empty link, a table row with the wrong
+    cell count, and the emphasis markers these repositories write.
+  
+  **Why here.** Nothing checked the _shape_ of the markdown this package compiles
+  — `lint` checks addresses, `links` checks that links land. Each consumer wired
+  prose checking itself, so coverage was lopsided: SoHL ran both tools, thalorna
+  had Prettier but never from `lint`, and kethira had neither, leaving the package
+  least likely to have been proofread checked for addresses and nothing else. This
+  package is the only one all three consume.
+  
+  **Both are defaults, not overrides.** A consumer's own Prettier config or
+  `.markdownlint-cli2.jsonc` wins. Repository-layout knowledge — which paths to
+  skip — stays in that repository's `.prettierignore` and `.gitignore`, both
+  honoured natively. `CHANGELOG.md` is skipped by default, since `changeset
+  version` regenerates it in every repository here.
+  
+  Neither tool's file discovery is reimplemented, so `content-build format` and a
+  bare `prettier --check .` report the same thing — verified against SoHL's tree
+  (2,470 files, identical result). A file Prettier cannot parse is reported as a
+  located finding rather than taking the run down, which is how
+  `sohl-kethira-basic`'s invalid `lang/en.json` was found
+  (HeroicLands/sohl-kethira-basic#34).
+  
+  The shared rules are also exported for editors, so format-on-save agrees with
+  the lint chain: `@heroiclands/content-build/prettier` and
+  `@heroiclands/content-build/markdownlint`.
+  
+  _New runtime dependencies:_ `markdownlint-cli2`, and `prettier` moves from a dev
+  dependency to a real one — the commands run them in process.
+
 ## 1.4.0
 
 ### Minor Changes
