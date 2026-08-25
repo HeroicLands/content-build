@@ -1,5 +1,31 @@
 # @heroiclands/content-build
 
+> # ⛔ Deprecated — do not use
+>
+> **This package has been merged into
+> [`@heroiclands/package-build`](https://github.com/HeroicLands/package-build)
+> and receives no further releases.** This repository is archived and read-only.
+>
+> ```diff
+> - "@heroiclands/content-build": "^1.8.2"
+> + "@heroiclands/package-build": "^3.0.0"
+> ```
+>
+> Every module, command and configuration key moved across unchanged. See
+> **[MIGRATING.md](https://github.com/HeroicLands/package-build/blob/main/MIGRATING.md)**
+> — the import specifiers change, the configuration file is renamed to
+> `package-build.config.yaml`, and nothing else does.
+>
+> **Why:** the two packages split by input, on the theory that a module would
+> use one or the other. No consumer ever did — all three installed both, and
+> `package-build` depended on this package besides. The boundary bought nothing
+> and cost a configuration file with two owners and a two-repository dance for
+> single changes. See
+> [package-build#32](https://github.com/HeroicLands/package-build/pull/32).
+>
+> The documentation below describes the last release, 1.8.2, and is kept only
+> for reference.
+
 The shared toolchain that compiles a **HeroicLands content tree** — a folder of
 Markdown notes with YAML frontmatter — into **Foundry VTT compendium packs**.
 
