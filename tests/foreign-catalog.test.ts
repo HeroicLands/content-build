@@ -20,8 +20,10 @@ import {
     pinnedManifestUrl,
     itemCatalogRelationships,
     foreignItemCatalogDirs,
+    fetchCatalogFromPath,
 } from "../engine/foreign-catalog.mjs";
 import { defineConfig } from "../index.mjs";
+import { Actors } from "../sohl/actors.mjs";
 
 const LATEST =
     "https://github.com/HeroicLands/Song-of-Heroic-Lands-FoundryVTT/releases/latest/download/system.json";
@@ -204,5 +206,139 @@ describe("reading the catalogue cache", () => {
                 relationships: { systems: [{ id: "sohl", manifest: LATEST }] },
             }),
         ).toEqual([]);
+    });
+});
+
+describe("filling the cache from a local build (not a release)", () => {
+    /*
+     * The point of this route: change the system, build it, and see the effect
+     * on every consumer before any of it is released. Without it, testing a
+     * dependency change against its consumers costs a release round-trip, which
+     * turns releasing into a debugging tool rather than a publishing decision.
+     */
+    let root: string;
+    let src: string;
+
+    beforeEach(() => {
+        root = fs.mkdtempSync(path.join(os.tmpdir(), "cb-local-"));
+        src = fs.mkdtempSync(path.join(os.tmpdir(), "cb-src-"));
+    });
+    afterEach(() => {
+        for (const d of [root, src])
+            fs.rmSync(d, { recursive: true, force: true });
+    });
+
+    const config = () => ({ paths: { foreignCache: root } });
+    const rel = { id: "sohl", manifest: "unused" };
+
+    it("refuses a path that does not exist", async () => {
+        await expect(
+            fetchCatalogFromPath(config(), rel, path.join(src, "nope")),
+        ).rejects.toThrow(/nothing at/);
+    });
+
+    it("refuses a directory holding no manifest", async () => {
+        // Without one there is no version to key the cache by and no pack list
+        // to extract, so there is nothing to do but say so.
+        await expect(fetchCatalogFromPath(config(), rel, src)).rejects.toThrow(
+            /system.json or module.json/,
+        );
+    });
+
+    it("refuses an artifact of a different package", async () => {
+        // Pointing --from at the wrong build would otherwise cache one
+        // package's items under another's name, and resolve nonsense.
+        fs.writeFileSync(
+            path.join(src, "system.json"),
+            JSON.stringify({ id: "kethira", version: "1.0.0", packs: [] }),
+        );
+        await expect(fetchCatalogFromPath(config(), rel, src)).rejects.toThrow(
+            /is package "kethira", not "sohl"/,
+        );
+    });
+
+    it("refuses an artifact declaring no version", async () => {
+        fs.writeFileSync(
+            path.join(src, "system.json"),
+            JSON.stringify({ id: "sohl", packs: [] }),
+        );
+        await expect(fetchCatalogFromPath(config(), rel, src)).rejects.toThrow(
+            /declares no `version`/,
+        );
+    });
+
+    it("refuses an artifact shipping no Item packs", async () => {
+        fs.writeFileSync(
+            path.join(src, "system.json"),
+            JSON.stringify({
+                id: "sohl",
+                version: "0.9.0",
+                packs: [
+                    {
+                        name: "journals",
+                        type: "JournalEntry",
+                        path: "packs/journals",
+                    },
+                ],
+            }),
+        );
+        await expect(fetchCatalogFromPath(config(), rel, src)).rejects.toThrow(
+            /declares no Item packs/,
+        );
+    });
+
+    it("finds a manifest nested one level down, as a zip lays it out", async () => {
+        // A package zip commonly wraps everything in one directory; the error
+        // proves the manifest was found and read, not that the walk gave up.
+        const inner = path.join(src, "sohl");
+        fs.mkdirSync(inner);
+        fs.writeFileSync(
+            path.join(inner, "system.json"),
+            JSON.stringify({ id: "sohl", version: "0.9.0", packs: [] }),
+        );
+        await expect(fetchCatalogFromPath(config(), rel, src)).rejects.toThrow(
+            /0.9.0: its manifest declares no Item packs/,
+        );
+    });
+});
+
+describe("the catalogue actually reaches the actors pass", () => {
+    /*
+     * The wiring, not the module. Every other test here exercises
+     * `foreign-catalog.mjs` in isolation, and all of them passed while the
+     * feature did nothing at all: the compiler destructured
+     * `foreignSourceDirs` and never assigned it, so the catalogue was silently
+     * dropped and thalorna still reported 26,220 unresolved items. A feature
+     * that is wired up wrong looks exactly like a feature that is switched off.
+     */
+    let dir: string;
+
+    beforeEach(() => {
+        dir = fs.mkdtempSync(path.join(os.tmpdir(), "cb-wiring-"));
+        fs.mkdirSync(path.join(dir, "content"));
+        fs.mkdirSync(path.join(dir, "items"));
+        fs.mkdirSync(path.join(dir, "foreign"));
+    });
+    afterEach(() => {
+        fs.rmSync(dir, { recursive: true, force: true });
+    });
+
+    it("keeps the foreign directories it was constructed with", () => {
+        const compiler = new Actors({
+            contentBase: path.join(dir, "content"),
+            dest: path.join(dir, "out"),
+            itemsSourceDirs: [path.join(dir, "items")],
+            foreignSourceDirs: [path.join(dir, "foreign")],
+        });
+        expect(compiler.foreignSourceDirs).toEqual([path.join(dir, "foreign")]);
+    });
+
+    it("defaults to none, so a repository needing no catalogue is unaffected", () => {
+        const compiler = new Actors({
+            contentBase: path.join(dir, "content"),
+            dest: path.join(dir, "out"),
+            itemsSourceDirs: [path.join(dir, "items")],
+        });
+        expect(compiler.foreignSourceDirs).toEqual([]);
     });
 });

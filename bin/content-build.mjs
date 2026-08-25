@@ -64,7 +64,11 @@ import {
     unpackPacks,
 } from "../engine/compendiums.mjs";
 import { loadPackConfig } from "../engine/pack-config.mjs";
-import { fetchAllCatalogs } from "../engine/foreign-catalog.mjs";
+import {
+    fetchAllCatalogs,
+    fetchCatalogFromPath,
+    itemCatalogRelationships,
+} from "../engine/foreign-catalog.mjs";
 import { renderItemFieldReference } from "../engine/field-reference.mjs";
 import { lintContentTree } from "../engine/content-lint.mjs";
 import { lintFrontmatter } from "../engine/frontmatter-lint.mjs";
@@ -927,16 +931,49 @@ function reachabilityCommand() {
 
 // eslint-disable-next-line
 /**
- * `deps fetch` — download every dependency that declares `itemCatalog: true`
- * and extract its Item packs into the version-keyed cache.
+ * `deps fetch` — fill the item-catalogue cache for every dependency that
+ * declares `itemCatalog: true`.
  *
  * Its own command rather than a step of `package compile`, so that a compile
  * never reaches the network. A build that downloads silently is not
  * reproducible, breaks offline, and hides a dependency's version change behind
  * a passing run.
  *
+ * `--from` fills the cache from a locally built artifact instead of a release,
+ * which is what makes iterating across packages possible: change the system,
+ * build it, and see the effect on every consumer **before** any of it ships.
+ * Otherwise testing a dependency change against its consumers costs a release
+ * round-trip, which makes releasing a debugging tool rather than a publishing
+ * decision.
+ *
  * @returns {object} The yargs command module.
  */
+/**
+ * Resolve which declared dependency `--from` supplies, and cache it.
+ *
+ * @param {object} config - The resolved build configuration.
+ * @param {{from: string, id?: string}} argv - The parsed arguments.
+ * @returns {Promise<void>}
+ */
+async function fetchFromLocalArtifact(config, argv) {
+    const rels = itemCatalogRelationships(config);
+    const named = rels.map((r) => r.id).join(", ") || "none";
+    const rel =
+        argv.id ? rels.find((r) => r.id === argv.id)
+        : rels.length === 1 ? rels[0]
+        : undefined;
+    if (!rel) {
+        // Name the choices: the id must match a declared relationship, and the
+        // config is the only place that says which those are.
+        throw new Error(
+            argv.id ?
+                `no dependency "${argv.id}" declares \`itemCatalog: true\` (declared: ${named})`
+            :   `--from needs --id when several dependencies declare \`itemCatalog: true\` (declared: ${named})`,
+        );
+    }
+    await fetchCatalogFromPath(config, rel, argv.from);
+}
+
 function depsCommand() {
     return {
         command: "deps <action>",
@@ -949,10 +986,28 @@ function depsCommand() {
                 type: "string",
                 choices: ["fetch"],
             });
+            yargs.option("from", {
+                describe:
+                    "Fill the cache from a locally built artifact — a package " +
+                    "zip or the directory it was built from — instead of a " +
+                    "release. Use it to test a consumer against changes that " +
+                    "have not shipped.",
+                type: "string",
+            });
+            yargs.option("id", {
+                describe:
+                    "Which declared dependency `--from` supplies. Only needed " +
+                    "when more than one declares `itemCatalog: true`.",
+                type: "string",
+            });
         },
         handler: async (argv) => {
             try {
                 const config = loadPackConfig();
+                if (argv.from) {
+                    await fetchFromLocalArtifact(config, argv);
+                    return;
+                }
                 const count = await fetchAllCatalogs(config);
                 if (count)
                     log.info(`Fetched ${count} dependency catalogue(s).`);
