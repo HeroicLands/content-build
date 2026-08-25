@@ -64,6 +64,7 @@ import {
     unpackPacks,
 } from "../engine/compendiums.mjs";
 import { loadPackConfig } from "../engine/pack-config.mjs";
+import { fetchAllCatalogs } from "../engine/foreign-catalog.mjs";
 import { renderItemFieldReference } from "../engine/field-reference.mjs";
 import { lintContentTree } from "../engine/content-lint.mjs";
 import { lintFrontmatter } from "../engine/frontmatter-lint.mjs";
@@ -141,6 +142,7 @@ prefix.apply(log, {
 
 const argv = yargs(hideBin(process.argv))
     .command(packageCommand())
+    .command(depsCommand())
     .command(docsCommand())
     .command(lintCommand())
     .command(linksCommand())
@@ -924,6 +926,44 @@ function reachabilityCommand() {
 }
 
 // eslint-disable-next-line
+/**
+ * `deps fetch` — download every dependency that declares `itemCatalog: true`
+ * and extract its Item packs into the version-keyed cache.
+ *
+ * Its own command rather than a step of `package compile`, so that a compile
+ * never reaches the network. A build that downloads silently is not
+ * reproducible, breaks offline, and hides a dependency's version change behind
+ * a passing run.
+ *
+ * @returns {object} The yargs command module.
+ */
+function depsCommand() {
+    return {
+        command: "deps <action>",
+        describe: "Manage build-time dependencies on other packages",
+        builder: (yargs) => {
+            // Required, for the reason `package <action>` is (#57): an optional
+            // action exits 0 having done nothing.
+            yargs.positional("action", {
+                describe: "The action to perform.",
+                type: "string",
+                choices: ["fetch"],
+            });
+        },
+        handler: async (argv) => {
+            try {
+                const config = loadPackConfig();
+                const count = await fetchAllCatalogs(config);
+                if (count)
+                    log.info(`Fetched ${count} dependency catalogue(s).`);
+            } catch (err) {
+                log.error(err.message);
+                process.exitCode = 1;
+            }
+        },
+    };
+}
+
 function packageCommand() {
     return {
         command: "package <action> [pack] [entry]",

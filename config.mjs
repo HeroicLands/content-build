@@ -92,6 +92,9 @@ export const DEFAULT_PATHS = /** @type {const} */ ({
     packJson: "build/packs-json",
     stage: "build/stage/packs",
     unpack: "build/tmp/packs",
+    // Where a dependency declaring `itemCatalog: true` is unpacked. Under
+    // `build/` because it is derived, disposable, and version-keyed.
+    foreignCache: "build/cache/foreign",
 });
 
 /**
@@ -526,7 +529,13 @@ const SITE_TREE_KEYS = ["from", "section"];
 const SECTION_META_KEYS = ["title", "banner"];
 const DOC_PAGE_KEYS = ["title", "out", "preamble"];
 const RELATIONSHIP_KINDS = ["systems", "requires", "recommends", "conflicts"];
-const RELATIONSHIP_KEYS = ["id", "type", "manifest", "compatibility"];
+const RELATIONSHIP_KEYS = [
+    "id",
+    "type",
+    "manifest",
+    "compatibility",
+    "itemCatalog",
+];
 const ITEM_BUILDER_KEYS = ["system", "img", "fields"];
 const PACK_KEYS = [
     "name",
@@ -1049,6 +1058,22 @@ function normalizeRelationships(value) {
                     false,
                 );
                 if (compat) spec.compatibility = compat;
+                // Opt-in: extract this package's Item packs so the actors pass
+                // can resolve embedded items this repository does not hold.
+                // Off by default, because depending on a package is not the
+                // same as needing its item catalogue at build time.
+                if (rel.itemCatalog !== undefined) {
+                    if (typeof rel.itemCatalog !== "boolean") {
+                        fail(`${at}.itemCatalog`, "must be true or false");
+                    }
+                    if (rel.itemCatalog && spec.manifest === undefined) {
+                        fail(
+                            `${at}.itemCatalog`,
+                            "needs a `manifest` naming the package to fetch",
+                        );
+                    }
+                    spec.itemCatalog = rel.itemCatalog;
+                }
                 return Object.freeze(spec);
             }),
         );
