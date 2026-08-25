@@ -332,6 +332,13 @@ export class Actors extends BasePackCompiler {
             value: Object.freeze([...itemsSourceDirs]),
             writable: false,
         });
+        // The dependency catalogues, if any. Not required: a repository that
+        // holds every item its beings name needs none, and one that declares
+        // no `itemCatalog: true` relationship gets an empty list.
+        Object.defineProperty(this, "foreignSourceDirs", {
+            value: Object.freeze([...foreignSourceDirs]),
+            writable: false,
+        });
     }
 
     /**
