@@ -36,6 +36,8 @@ import fs from "fs";
 import path from "path";
 import log from "loglevel";
 
+import { foreignItemCatalogDirs } from "./foreign-catalog.mjs";
+
 import { Items } from "../sohl/items.mjs";
 import { Journals } from "./journals.mjs";
 import { Actors } from "../sohl/actors.mjs";
@@ -174,6 +176,12 @@ async function generatePack(
         // (#1508) — and it is every Item pack, since a repository may ship more
         // than one (#1566).
         itemsSourceDirs: itemPackJsonDirs(config),
+        // The catalogue of a package this repository depends on but does
+        // not contain, for a repository that authors beings without
+        // holding the items they are assembled from. Cache-only: a cold
+        // cache throws naming `content-build deps fetch` rather than
+        // downloading inside a compile.
+        foreignSourceDirs: foreignItemCatalogDirs(config),
         folderResolver: resolver,
         packName: name,
         docType: type,

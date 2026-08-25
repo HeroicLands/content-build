@@ -164,16 +164,26 @@ function extractBodyAndMovement(fm) {
  * it is not part of the item data model.
  *
  * The directories are read as one address space, because a being names an item
- * by `(type, shortcode)` and never by the pack it happens to ship in. Two Item
- * packs claiming the same address is therefore ambiguous rather than a
+ * by `(type, shortcode)` and never by the pack it happens to ship in. Two local
+ * Item packs claiming the same address is therefore ambiguous rather than a
  * last-one-wins ordering detail, and fails here.
  *
- * @param {readonly string[]} itemsSourceDirs - Every Item pack's JSON tree.
+ * A **foreign** directory — the extracted item catalogue of a package this
+ * repository depends on but does not contain — is a fallback rather than a
+ * peer. A repository must be able to ship its own `skill:awar` that stands in
+ * front of the system's, so a local address shadows a foreign one instead of
+ * colliding with it. Local directories are therefore read first, and anything
+ * already claimed is left alone.
+ *
+ * @param {readonly string[]} itemsSourceDirs - Every local Item pack's JSON tree.
+ * @param {readonly string[]} [foreignSourceDirs] - Extracted dependency
+ *   catalogues, consulted only for addresses no local pack defines.
  * @returns {Map<string, object>} The predefined items, by address.
  */
-function loadItemsMap(itemsSourceDirs) {
+function loadItemsMap(itemsSourceDirs, foreignSourceDirs = []) {
     const map = new Map();
     const source = new Map();
+    const shadowed = [];
     for (const itemsSourceDir of itemsSourceDirs) {
         if (!fs.existsSync(itemsSourceDir)) {
             throw new Error(
@@ -212,6 +222,42 @@ function loadItemsMap(itemsSourceDirs) {
             const { _key, ...rest } = doc;
             map.set(address, rest);
         }
+    }
+    for (const foreignDir of foreignSourceDirs) {
+        for (const name of fs.readdirSync(foreignDir)) {
+            if (!name.endsWith(".json")) continue;
+            if (name.startsWith("folder_")) continue;
+            const full = path.join(foreignDir, name);
+            let doc;
+            try {
+                doc = JSON.parse(fs.readFileSync(full, "utf8"));
+            } catch (err) {
+                emitDiagnostic({
+                    file: full,
+                    severity: "warning",
+                    message: `unparseable item JSON, skipping: ${err.message}`,
+                });
+                continue;
+            }
+            const shortcode = doc?.system?.shortcode;
+            if (!doc?.type || !shortcode) continue;
+            const address = `${doc.type}:${shortcode}`;
+            if (map.has(address)) {
+                // Deliberate: this repository defines it, so its version wins.
+                if (source.has(address)) shadowed.push(address);
+                continue;
+            }
+            // eslint-disable-next-line no-unused-vars
+            const { _key, ...rest } = doc;
+            map.set(address, rest);
+        }
+    }
+    if (shadowed.length) {
+        log.info(
+            `${shadowed.length} dependency item(s) shadowed by this ` +
+                `repository's own: ${shadowed.slice(0, 5).join(", ")}` +
+                (shadowed.length > 5 ? ", …" : ""),
+        );
     }
     return map;
 }
@@ -266,8 +312,9 @@ export class Actors extends BasePackCompiler {
 
     /** @type {readonly string[]} */
     itemsSourceDirs;
+    foreignSourceDirs;
 
-    constructor({ itemsSourceDirs, ...options }) {
+    constructor({ itemsSourceDirs, foreignSourceDirs = [], ...options }) {
         super(options);
         // Where the items passes wrote their JSON. Stated by the caller rather
         // than assumed to be this pack's sibling: the packs' locations are
@@ -303,7 +350,10 @@ export class Actors extends BasePackCompiler {
      */
     async prepare() {
         await super.prepare();
-        this.itemsMap = loadItemsMap(this.itemsSourceDirs);
+        this.itemsMap = loadItemsMap(
+            this.itemsSourceDirs,
+            this.foreignSourceDirs,
+        );
         log.info(
             `Loaded ${this.itemsMap.size} predefined items for actor resolution`,
         );
